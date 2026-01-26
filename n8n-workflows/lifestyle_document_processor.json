@@ -1,0 +1,946 @@
+{
+  "name": "Lifestyle Document Processor (22)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "c060fdba-ff66-4569-9ec3-d46358e8a3c4",
+      "name": "Extract from PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2784,
+        3696
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "b2aff52e-78e2-4b67-b1f4-682005178aa4",
+      "name": "Extract from DOCX",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2976,
+        3888
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition-pdf",
+              "leftValue": "={{ $json.binary?.file?.mimeType || $json.binary?.data?.mimeType || '' }}",
+              "rightValue": "application/pdf",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2339ed90-c030-4e16-b756-c08b5ff452d2",
+      "name": "Check File Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        3872
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition-has-binary",
+              "leftValue": "={{ Object.keys($json.binary || {}).length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "75f6ab2b-ca63-4ff1-865d-6e862d01214e",
+      "name": "Has Binary Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        3504
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a data extraction expert. Extract lifestyle/attraction information from the following document text.\n\nIMPORTANT: The input may contain MULTIPLE products/attractions. Identify each separate product and return a JSON object with a 'products' array containing all products found.\n\nFor EACH product, extract the following fields if present:\n- name (attraction/lifestyle name)\n- description\n- city\n- country\n- address\n- micro_location\n- latitude\n- longitude\n- attraction_type\n- category1, category2, category3, category4\n- selling_points\n- entrance (yes/no)\n- guide (details)\n- meal (included/not included)\n- operating_days\n- opening_time\n- closing_time\n- closed_days\n- closed_dates\n- features (array of features)\n- adult_rate\n- child_rate\n- package_rate\n- currency\n- booking_start_date\n- booking_end_date\n- travel_start_date\n- travel_end_date\n- child_age\n- adult_age\n- child_foc_age\n- cancellation_policy\n- payment_policy\n- min_adult_occupancy\n- max_adult_occupancy\n- min_child_occupancy\n- max_child_occupancy\n- total_occupancy\n- package_name\n- package_type\n- inventory_date\n- pickup_location\n- pickup_time\n- total_inventory\n- allotment\n- inclusions\n- exclusions\n- general_terms_and_conditions\n\nDocument Text:\n{{ $json.text ? $json.text : $('Webhook').first().json.body.chatInput }}\n\nReturn ONLY valid JSON in this format:\n{\n  \"products\": [\n    { /* first product with all fields */ },\n    { /* second product with all fields */ }\n  ]\n}\n\nIf only ONE product is found, still return it inside the products array. Use null for fields not found."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "430d21b5-6688-4cee-aefd-4a59309e856d",
+      "name": "AI Extract Document Data",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.4,
+      "position": [
+        3088,
+        3696
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "EghJAjFZejQIbcUf",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simply pass through the AI extracted data\nconst items = $input.all();\nreturn items;"
+      },
+      "id": "a0cd5e9c-2f9f-4836-9143-e2df4ac67f9c",
+      "name": "Transform to Table Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3392,
+        3696
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI extracted data - handle both single product and multiple products\nconst parsedData = JSON.parse($input.first().json.message.content);\n\n// Normalize to array of products\nlet products = [];\nif (parsedData.products && Array.isArray(parsedData.products)) {\n  products = parsedData.products;\n} else {\n  // Single product - wrap in array\n  products = [parsedData];\n}\n\n// Current timestamp\nconst now = new Date().toISOString().slice(0, 19).replace('T', ' ');\nconst today = new Date().toISOString().slice(0, 10);\n\n// Calculate end date (360 days from today)\nconst endDate = new Date();\nendDate.setDate(endDate.getDate() + 360);\nconst inventoryEndDate = endDate.toISOString().slice(0, 10);\n\n// Arrays to hold all records for each table\nconst all_tbl_lifestyle = [];\nconst all_tbl_lifestyle_detail = [];\nconst all_tbl_lifestyle_rates = [];\nconst all_life_style_rates_packages = [];\nconst all_tbl_lifestyle_inventory = [];\nconst all_tbl_lifestyle_terms_and_conditions = [];\n\n// Process each product with unique IDs\nlet inventoryIdCounter = 1;\n\nfor (let productIndex = 0; productIndex < products.length; productIndex++) {\n  const extractedData = products[productIndex];\n  \n  // IDs - Starting with product index + 1\n  const lifestyle_id = productIndex + 1;\n  const lifestyle_rate_id = productIndex + 1;\n  const lifestyle_detail_id = productIndex + 1;\n  const package_id = productIndex + 1;\n  const termsncondition_id = productIndex + 1;\n\n  // TABLE 1: tbl_lifestyle\n  all_tbl_lifestyle.push({\n    lifestyle_id: lifestyle_id,\n    lifestyle_city: extractedData.city || null,\n    lifestyle_attraction_type: extractedData.attraction_type || null,\n    lifestyle_name: extractedData.name || 'Unnamed Attraction',\n    lifestyle_description: extractedData.description || '',\n    latitude: parseFloat(extractedData.latitude) || null,\n    longitude: parseFloat(extractedData.longitude) || null,\n    address: extractedData.address || '',\n    micro_location: extractedData.micro_location || extractedData.city || null,\n    tripadvisor: extractedData.tripadvisor || null,\n    preferred: extractedData.preferred || 1,\n    selling_points: extractedData.selling_points || '',\n    pref_start_date: extractedData.pref_start_date || null,\n    pref_end_date: extractedData.pref_end_date || null,\n    vendor_id: extractedData.vendor_id || 56,\n    provider: extractedData.provider || 1,\n    provider_id: extractedData.provider_id || 1,\n    active_status: 0,\n    image: extractedData.image || '',\n    category1: extractedData.category1 || 3,\n    category2: extractedData.category2 || 3,\n    category3: extractedData.category3 || 10,\n    category4: extractedData.category4 || 31,\n    additional_data_5: 1,\n    additional_data_6: null,\n    additional_data_7: null,\n    additional_data_8: null,\n    additional_data_9: null,\n    additional_data_10: null,\n    created_at: now,\n    updated_at: now,\n    updated_by: extractedData.vendor_id || 56,\n    markup: 3,\n    auto_confirmation: 0,\n    triggers: extractedData.triggers || 96,\n    sub_description: extractedData.sub_description || '',\n    deleted_at: null,\n    country: extractedData.country || 'LK',\n    adult_rate: parseFloat(extractedData.adult_rate) || 0.00,\n    child_rate: parseFloat(extractedData.child_rate) || 0.00,\n    currency: extractedData.currency || 'LKR',\n    default_rate: parseFloat(extractedData.default_rate) || null,\n    inventory_end_date: inventoryEndDate,\n    inventory_start_date: today,\n    package_rate: parseFloat(extractedData.package_rate) || 0\n  });\n\n  // TABLE 2: tbl_lifestyle_detail\n  const features = extractedData.features || [];\n  all_tbl_lifestyle_detail.push({\n    lifestyle_detail_id: lifestyle_detail_id,\n    lifestyle_id: lifestyle_id,\n    entrance: extractedData.entrance || 'no',\n    guide: extractedData.guide || 'no',\n    meal: extractedData.meal || 'no',\n    meal_transfer: extractedData.meal_transfer || 'no',\n    covid_safe: extractedData.covid_safe || 'Yes',\n    operating_dates: ',',\n    operating_days: extractedData.operating_days || null,\n    opening_time: extractedData.opening_time || '09:00:00',\n    closing_time: extractedData.closing_time || '18:00:00',\n    closed_days: extractedData.closed_days || null,\n    closed_dates: extractedData.closed_dates || null,\n    created_at: now,\n    updated_at: now,\n    updated_by: extractedData.vendor_id || 56,\n    feature1: features[0] || null,\n    feature2: features[1] || null,\n    feature3: features[2] || null,\n    feature4: features[3] || null,\n    feature5: features[4] || null,\n    feature6: features[5] || null,\n    feature7: features[6] || null,\n    feature8: features[7] || null,\n    feature9: features[8] || null,\n    feature10: features[9] || null,\n    feature11: features[10] || null,\n    feature12: features[11] || null,\n    feature13: features[12] || null,\n    feature14: features[13] || null,\n    feature15: features[14] || null,\n    feature16: features[15] || null,\n    feature17: features[16] || null,\n    feature18: features[17] || null,\n    feature19: features[18] || null,\n    deleted_at: null\n  });\n\n  // TABLE 3: tbl_lifestyle_rates\n  all_tbl_lifestyle_rates.push({\n    lifestyle_rate_id: lifestyle_rate_id,\n    lifestyle_id: lifestyle_id,\n    booking_start_date: extractedData.booking_start_date || today,\n    booking_end_date: extractedData.booking_end_date || '2026-12-31',\n    travel_start_date: extractedData.travel_start_date || today,\n    travel_end_date: extractedData.travel_end_date || '2026-12-31',\n    attraction_category: extractedData.attraction_category || null,\n    meal_plan: extractedData.meal_plan || null,\n    market: extractedData.market || 'All Market',\n    currency: extractedData.currency || 'LKR',\n    adult_rate: parseFloat(extractedData.adult_rate) || 0.00,\n    child_rate: parseFloat(extractedData.child_rate) || 0.00,\n    student_rate: parseFloat(extractedData.student_rate) || 0,\n    senior_rate: parseFloat(extractedData.senior_rate) || 0,\n    military_rate: parseFloat(extractedData.military_rate) || 0,\n    other_rate: parseFloat(extractedData.other_rate) || 0,\n    child_foc_age: extractedData.child_foc_age || '0-3',\n    child_age: extractedData.child_age || '5-11',\n    adult_age: extractedData.adult_age || '12-100',\n    cwb_age: extractedData.cwb_age || '0-0',\n    cnb_age: extractedData.cnb_age || '0-0',\n    payment_policy: extractedData.payment_policy || 'Full payment required at booking',\n    book_by_days: extractedData.book_by_days || 3,\n    cancellation_days: extractedData.cancellation_days || 1,\n    cancel_policy: extractedData.cancellation_policy || 'Free cancellation up to 24 hours before',\n    stop_sales_Dates: null,\n    blackout_days: extractedData.blackout_days || null,\n    blackout_dates: extractedData.blackout_dates || null,\n    additional_data1: null,\n    additional_data2: null,\n    additional_data3: null,\n    additional_data4: null,\n    additional_data5: null,\n    additional_data6: null,\n    additional_data7: null,\n    additional_data8: null,\n    additional_data9: null,\n    additional_data10: null,\n    created_at: now,\n    updated_at: now,\n    updated_by: extractedData.vendor_id || 56,\n    package_rate: parseFloat(extractedData.package_rate) || 0,\n    deleted_at: null,\n    actual_adult_rate: parseFloat(extractedData.actual_adult_rate) || parseFloat(extractedData.adult_rate) || 0,\n    actual_child_rate: parseFloat(extractedData.actual_child_rate) || parseFloat(extractedData.child_rate) || 0,\n    actual_package_rate: parseFloat(extractedData.actual_package_rate) || 0\n  });\n\n  // TABLE 4: life_style_rates_packages\n  all_life_style_rates_packages.push({\n    id: package_id,\n    rate_id: lifestyle_rate_id,\n    min_adult_occupancy: parseInt(extractedData.min_adult_occupancy) || 1,\n    max_adult_occupancy: parseInt(extractedData.max_adult_occupancy) || 10,\n    min_child_occupancy: parseInt(extractedData.min_child_occupancy) || 0,\n    max_child_occupancy: parseInt(extractedData.max_child_occupancy) || 0,\n    total_occupancy: parseInt(extractedData.total_occupancy) || 10,\n    rate_type: extractedData.rate_type || 'Per Person',\n    package_rate: parseFloat(extractedData.package_rate) || 0,\n    adult_rate: parseFloat(extractedData.adult_rate) || 0.00,\n    child_rate: parseFloat(extractedData.child_rate) || 0.00,\n    package_name: extractedData.package_name || 'Package Type',\n    package_type: extractedData.package_type || 'Per Person',\n    package_selection: false,\n    description: extractedData.package_description || null,\n    blocking_status: null,\n    created_at: now,\n    updated_at: now,\n    deleted_at: null,\n    actual_package_rate: parseFloat(extractedData.actual_package_rate) || 0,\n    actual_adult_rate: parseFloat(extractedData.actual_adult_rate) || parseFloat(extractedData.adult_rate) || 0,\n    actual_child_rate: parseFloat(extractedData.actual_child_rate) || parseFloat(extractedData.child_rate) || 0,\n    status: 1\n  });\n\n  // TABLE 5: tbl_lifestyle_inventory (210 days per product)\n  const startDate = new Date();\n  const pickupLocation = extractedData.pickup_location || (extractedData.city ? extractedData.city + ', Sri Lanka' : null);\n  const pickupTime = extractedData.pickup_time || '09:00-18:00';\n  const maxAdultOcc = parseInt(extractedData.max_adult_occupancy) || 1;\n  const maxChildOcc = parseInt(extractedData.max_child_occupancy) || 2;\n  const maxTotalOcc = parseInt(extractedData.total_occupancy) || 6;\n  const totalInventory = parseInt(extractedData.total_inventory) || 20;\n  const allotment = parseInt(extractedData.allotment) || 20;\n  const invLongitude = parseFloat(extractedData.longitude) || null;\n  const invLatitude = parseFloat(extractedData.latitude) || null;\n\n  for (var i = 0; i < 210; i++) {\n    var inventoryDate = new Date(startDate);\n    inventoryDate.setDate(startDate.getDate() + i);\n    var dateStr = inventoryDate.toISOString().slice(0, 10);\n    \n    all_tbl_lifestyle_inventory.push({\n      lifestyle_inventory_id: inventoryIdCounter++,\n      lifestyle_id: lifestyle_id,\n      rate_id: lifestyle_rate_id,\n      pickup_location: pickupLocation,\n      inventory_date: dateStr,\n      pickup_time: pickupTime,\n      max_adult_occupancy: maxAdultOcc,\n      max_children_occupancy: maxChildOcc,\n      max_total_occupancy: maxTotalOcc,\n      total_inventory: totalInventory,\n      allotment: allotment,\n      used: 0,\n      balance: allotment,\n      vehicle_type: extractedData.vehicle_type || null,\n      inclusions: extractedData.inclusions || null,\n      exclusions: extractedData.exclusions || null,\n      longitude: invLongitude,\n      latitude: invLatitude,\n      additional_data1: null,\n      additional_data2: null,\n      additional_data3: null,\n      additional_data4: null,\n      additional_data5: null,\n      additional_data6: null,\n      additional_data7: null,\n      additional_data8: null,\n      additional_data9: null,\n      additional_data10: null,\n      created_at: null,\n      updated_at: now,\n      updated_by: null,\n      inventory_deadline: today,\n      deleted_at: null\n    });\n  }\n\n  // TABLE 6: tbl_lifestyle_terms_and_conditions\n  const defaultTerms = 'Services are provided by appointment only and are subject to availability.';\n  all_tbl_lifestyle_terms_and_conditions.push({\n    termsncondition_id: termsncondition_id,\n    lifestyle_id: lifestyle_id,\n    general_tnc: extractedData.general_terms_and_conditions || defaultTerms,\n    cancel_policy: extractedData.cancellation_policy || 'Free cancellation up to 24 hours before',\n    created_at: now,\n    updated_at: now,\n    updated_by: extractedData.vendor_id || 56,\n    deleted_at: null\n  });\n}\n\n// Return all tables with all products\nreturn [{\n  json: {\n    product_count: products.length,\n    extracted_raw_data: products,\n    tables: {\n      tbl_lifestyle: all_tbl_lifestyle,\n      tbl_lifestyle_detail: all_tbl_lifestyle_detail,\n      tbl_lifestyle_rates: all_tbl_lifestyle_rates,\n      life_style_rates_packages: all_life_style_rates_packages,\n      tbl_lifestyle_inventory: all_tbl_lifestyle_inventory,\n      tbl_lifestyle_terms_and_conditions: all_tbl_lifestyle_terms_and_conditions\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3568,
+        3696
+      ],
+      "id": "ba60ab83-5434-4699-9726-17f548fc0fb5",
+      "name": "Format Tables"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract tbl_lifestyle data - handles multiple products\nconst inputData = $input.first().json;\nconst lifestyleData = inputData.tables.tbl_lifestyle;\n\n// Check if it's an array (multiple products) or single object\nif (Array.isArray(lifestyleData)) {\n  // Return all lifestyle records as separate items\n  return lifestyleData.map(function(record) {\n    return { \n      json: {\n        ...record,\n        lifestyle_city: record.lifestyle_city || null\n      }\n    };\n  });\n} else {\n  // Single product\n  return {\n    json: {\n      ...lifestyleData,\n      lifestyle_city: lifestyleData.lifestyle_city || null\n    }\n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        3200
+      ],
+      "id": "469a76ba-8b1d-4be7-91dd-c9dda7c5ff9a",
+      "name": "tbl_lifestyle",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract tbl_lifestyle_detail data - handles multiple products\nconst inputData = $input.first().json;\nconst detailData = inputData.tables.tbl_lifestyle_detail;\n\n// Check if it's an array (multiple products) or single object\nif (Array.isArray(detailData)) {\n  return detailData.map(function(record) {\n    return { json: record };\n  });\n} else {\n  return { json: detailData };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        3360
+      ],
+      "id": "05d50aea-72ab-4354-9ad7-6834fd780a41",
+      "name": "tbl_lifestyle_detail",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract tbl_lifestyle_rates data - handles multiple products\nconst inputData = $input.first().json;\nconst ratesData = inputData.tables.tbl_lifestyle_rates;\n\n// Check if it's an array (multiple products) or single object\nif (Array.isArray(ratesData)) {\n  return ratesData.map(function(record) {\n    return { json: record };\n  });\n} else {\n  return { json: ratesData };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        3536
+      ],
+      "id": "ede15428-6aa5-42c8-ad22-252a0a301b84",
+      "name": "tbl_lifestyle_rates",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract life_style_rates_packages data - handles multiple products\nconst inputData = $input.first().json;\nconst packagesData = inputData.tables.life_style_rates_packages;\n\n// Check if it's an array (multiple products) or single object\nif (Array.isArray(packagesData)) {\n  return packagesData.map(function(record) {\n    return { json: record };\n  });\n} else {\n  return { json: packagesData };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        3840
+      ],
+      "id": "f8326ac0-431e-4c36-832c-886db3ec780c",
+      "name": "life_style_rates_packages",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract tbl_lifestyle_inventory data from input\nconst inputData = $input.first().json;\n\n// Get inventory records from input - use tables if available, otherwise use direct input\nlet inventoryRecords;\nif (inputData.tables && inputData.tables.tbl_lifestyle_inventory) {\n  inventoryRecords = inputData.tables.tbl_lifestyle_inventory;\n} else if (Array.isArray(inputData)) {\n  inventoryRecords = inputData;\n} else {\n  // Use whatever data is passed from input\n  inventoryRecords = [inputData];\n}\n\n// Check if inventoryRecords is an array\nif (!Array.isArray(inventoryRecords)) {\n  inventoryRecords = [inventoryRecords];\n}\n\n// Return all inventory records as separate items using input data\nreturn inventoryRecords.map(function(record) {\n  return { \n    json: {\n      ...record,\n      pickup_location: record.pickup_location || inputData.pickup_location || '',\n      latitude: record.latitude || inputData.latitude || null,\n      longitude: record.longitude || inputData.longitude || null\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        4016
+      ],
+      "id": "3276512d-4e75-4a59-8772-61e23f9c1dfd",
+      "name": "tbl_lifestyle_inventory",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract tbl_lifestyle_terms_and_conditions data - handles multiple products\nconst inputData = $input.first().json;\nconst termsData = inputData.tables.tbl_lifestyle_terms_and_conditions;\n\n// Check if it's an array (multiple products) or single object\nif (Array.isArray(termsData)) {\n  return termsData.map(function(record) {\n    return { json: record };\n  });\n} else {\n  return { json: termsData };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        4208
+      ],
+      "id": "7be917a5-c97c-482a-a32a-f91532138edb",
+      "name": "tbl_lifestyle_terms_and_conditions",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "tbl_lifestyle_inventory.xlsx"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4416,
+        4016
+      ],
+      "id": "ac38c0b8-da79-469b-bf9f-c7fbe9195ce5",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "life_style_rates_packages.xlsx"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4240,
+        3840
+      ],
+      "id": "0eda6b86-4a93-461f-836a-a03a6eb6654f",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "tbl_lifestyle_terms_and_conditions.xlsx"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4416,
+        4208
+      ],
+      "id": "a8fff9ac-fa2c-4d21-8281-526a3650f453",
+      "name": "Convert to File2"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "tbl_lifestyle_rates.xlsx"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4224,
+        3536
+      ],
+      "id": "38de1e4a-e0b6-418f-a67a-c5f3baa3d60d",
+      "name": "Convert to File3"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "tbl_lifestyle_detail.xlsx"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4224,
+        3360
+      ],
+      "id": "dbf56593-96df-4e77-a826-219fa47e74a2",
+      "name": "Convert to File4"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "tbl_lifestyle.xlsx"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        4416,
+        3200
+      ],
+      "id": "32b77f66-c323-4b44-8d94-6e19c3ab59ea",
+      "name": "Convert to File5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Places API response for Lifestyle table\nconst inputData = $input.first().json;\nconst prevData = $('tbl_lifestyle').first().json;\n\n// Extract lat/long/address from Google Places API response\nlet latitude = prevData.latitude;\nlet longitude = prevData.longitude;\nlet address = prevData.address;\n\n// Use Google Places API data (uses 'candidates' array)\nif (inputData.status === 'OK' && inputData.candidates && inputData.candidates.length > 0) {\n  const candidate = inputData.candidates[0];\n  \n  // Get geometry data\n  if (candidate.geometry && candidate.geometry.location) {\n    latitude = candidate.geometry.location.lat;\n    longitude = candidate.geometry.location.lng;\n  }\n  \n  // Get formatted address\n  if (candidate.formatted_address) {\n    address = candidate.formatted_address;\n  }\n}\n\n// Return updated lifestyle data\nreturn {\n  json: {\n    ...prevData,\n    latitude: latitude,\n    longitude: longitude,\n    address: address\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4224,
+        3200
+      ],
+      "id": "682d2ae9-905a-41be-9015-944bde15c706",
+      "name": "Process Lifestyle GeoData",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Places API response for Inventory table\nconst inputData = $input.first().json;\nconst allInventoryItems = $('tbl_lifestyle_inventory').all();\n\n// Extract lat/long from Google Places API response\nlet latitude = null;\nlet longitude = null;\nlet pickup_location = null;\n\n// Use Google Places API data (uses 'candidates' array)\nif (inputData.status === 'OK' && inputData.candidates && inputData.candidates.length > 0) {\n  const candidate = inputData.candidates[0];\n  \n  // Get geometry data\n  if (candidate.geometry && candidate.geometry.location) {\n    latitude = candidate.geometry.location.lat;\n    longitude = candidate.geometry.location.lng;\n  }\n  \n  // Get formatted address for pickup_location\n  if (candidate.formatted_address) {\n    pickup_location = candidate.formatted_address;\n  }\n}\n\n// Return all inventory items with updated geo data\nreturn allInventoryItems.map((item) => {\n  const record = item.json;\n  return {\n    json: {\n      ...record,\n      latitude: latitude || record.latitude,\n      longitude: longitude || record.longitude,\n      pickup_location: pickup_location || record.pickup_location\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4240,
+        4016
+      ],
+      "id": "303f5061-c21b-476f-8266-75d58ba9d022",
+      "name": "Process Inventory GeoData",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "=https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "={{ $json.extracted_raw_data[0] ? $json.extracted_raw_data[0].city : ($json.extracted_raw_data.city || '') }}"
+            },
+            {
+              "name": "inputtype",
+              "value": "textquery"
+            },
+            {
+              "name": "fields",
+              "value": "formatted_address,geometry,name,place_id"
+            },
+            {
+              "name": "key",
+              "value": "AIzaSyA0Z8_GzoG68yaI8pAEkA_03Ig1N-6qki8"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "77c9b275-2d15-4552-b800-34422a0737c2",
+      "name": "Google Places API - Inventory1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3728,
+        3696
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Places API response and map all data from Format Tables\nconst googleApiResponse = $input.first().json;\nconst formatTablesData = $('Format Tables').first().json;\n\n// Extract Google Places API data (city-wise address, lat, long)\nlet googleAddress = '';\nlet googleLat = null;\nlet googleLng = null;\nlet placeName = '';\n\nif (googleApiResponse.status === 'OK' && googleApiResponse.candidates && googleApiResponse.candidates.length > 0) {\n  const candidate = googleApiResponse.candidates[0];\n  \n  // Get formatted address\n  if (candidate.formatted_address) {\n    googleAddress = candidate.formatted_address;\n  }\n  \n  // Get place name\n  if (candidate.name) {\n    placeName = candidate.name;\n  }\n  \n  // Get geometry (latitude and longitude)\n  if (candidate.geometry && candidate.geometry.location) {\n    googleLat = candidate.geometry.location.lat;\n    googleLng = candidate.geometry.location.lng;\n  }\n}\n\n// Get original extracted data and tables from Format Tables\nconst extractedRawData = formatTablesData.extracted_raw_data || [];\nconst tables = formatTablesData.tables || {};\nconst productCount = formatTablesData.product_count || 1;\n\n// Update tbl_lifestyle with Google API data (for all products)\nif (tables.tbl_lifestyle && Array.isArray(tables.tbl_lifestyle)) {\n  tables.tbl_lifestyle = tables.tbl_lifestyle.map(function(record, index) {\n    // Only apply Google data to records without existing lat/long\n    return {\n      ...record,\n      address: record.address || googleAddress || '',\n      latitude: record.latitude || googleLat,\n      longitude: record.longitude || googleLng\n    };\n  });\n}\n\n// Update tbl_lifestyle_inventory with Google API data (for all products)\nif (tables.tbl_lifestyle_inventory && Array.isArray(tables.tbl_lifestyle_inventory)) {\n  tables.tbl_lifestyle_inventory = tables.tbl_lifestyle_inventory.map(function(record) {\n    return {\n      ...record,\n      pickup_location: record.pickup_location || googleAddress || '',\n      latitude: record.latitude || googleLat,\n      longitude: record.longitude || googleLng\n    };\n  });\n}\n\n// Return combined data with Google API enriched information\nreturn [{\n  json: {\n    product_count: productCount,\n    extracted_raw_data: extractedRawData,\n    google_places_data: {\n      address: googleAddress,\n      latitude: googleLat,\n      longitude: googleLng,\n      place_name: placeName\n    },\n    tables: tables\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3888,
+        3696
+      ],
+      "id": "de72ad14-df86-484a-9b1e-14cce26f5583",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "d9a28ea2-5ad8-4a13-a535-bcd25361da38",
+      "name": "Merge All Files",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4528,
+        3696
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "f7b6f4c6-6c6b-4d0d-93a2-3cc4b6b2c62a",
+      "name": "Merge Files 1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4304,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "5f26b4e1-7e5e-4dc6-9d5e-9d3b4f2b62c8",
+      "name": "Merge Files 2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4392,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "0a0b73b9-1d03-4d5b-9f93-0f6d3e9d0dd7",
+      "name": "Merge Files 3",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4480,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "a4f2d36a-6f72-4a1b-9d3a-2f2e1d8b5a1d",
+      "name": "Merge Files 4",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4568,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "id": "4dbfe21a-1f9e-4e1e-a03e-263b278ff366",
+      "name": "Wait For Files",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4688,
+        3696
+      ],
+      "webhookId": "wait-webhook-id"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all Excel files from merged input and convert to base64\n\n// Get product count from Format Tables node\nlet productCount = 1;\ntry {\n  productCount = $('Format Tables').first().json.product_count || 1;\n} catch(e) {\n  productCount = 1;\n}\n\n// Initialize response object\nconst response = {\n  success: true,\n  message: `Successfully processed ${productCount} product(s)`,\n  product_count: productCount,\n  files: {}\n};\n\nconst fileKeyMap = {\n  'tbl_lifestyle.xlsx': 'tbl_lifestyle',\n  'tbl_lifestyle_detail.xlsx': 'tbl_lifestyle_detail',\n  'tbl_lifestyle_rates.xlsx': 'tbl_lifestyle_rates',\n  'life_style_rates_packages.xlsx': 'life_style_rates_packages',\n  'tbl_lifestyle_inventory.xlsx': 'tbl_lifestyle_inventory',\n  'tbl_lifestyle_terms_and_conditions.xlsx': 'tbl_lifestyle_terms_and_conditions'\n};\n\n// Get all items from merged input\nconst allItems = $input.all();\n\n// Process each item and read binary data properly\nfor (let itemIndex = 0; itemIndex < allItems.length; itemIndex++) {\n  const item = allItems[itemIndex];\n  if (item.binary) {\n    for (const binaryKey of Object.keys(item.binary)) {\n      const binaryInfo = item.binary[binaryKey];\n      const fileName = binaryInfo.fileName || '';\n      const fileKey = fileKeyMap[fileName];\n      if (fileKey) {\n        try {\n          // Use helpers.getBinaryDataBuffer to read actual file content from filesystem\n          const buffer = await helpers.getBinaryDataBuffer(itemIndex, binaryKey);\n          const base64Data = buffer.toString('base64');\n          response.files[fileKey] = base64Data;\n        } catch(e) {\n          // If helper fails, try direct access as fallback\n          if (binaryInfo.data && typeof binaryInfo.data === 'string' && binaryInfo.data.length > 50) {\n            response.files[fileKey] = binaryInfo.data;\n          }\n        }\n      }\n    }\n  }\n}\n\nreturn [{ json: response }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4688,
+        3568
+      ],
+      "id": "dabf7914-414d-448e-8295-a7cd41449610",
+      "name": "Prepare Response",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "0caca56a-edd6-48d3-ad47-679c1c159864",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        4896,
+        3696
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "6c340ec7-abba-4644-bbf6-9f7e080c0386",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        2576,
+        3504
+      ],
+      "id": "23bb7b60-b449-4b90-bff5-0384ac19a757",
+      "name": "Webhook",
+      "webhookId": "6c340ec7-abba-4644-bbf6-9f7e080c0386"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Extract from PDF": {
+      "main": [
+        [
+          {
+            "node": "AI Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from DOCX": {
+      "main": [
+        [
+          {
+            "node": "AI Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check File Type": {
+      "main": [
+        [
+          {
+            "node": "Extract from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from DOCX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Extract Document Data": {
+      "main": [
+        [
+          {
+            "node": "Transform to Table Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Table Format": {
+      "main": [
+        [
+          {
+            "node": "Format Tables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Tables": {
+      "main": [
+        [
+          {
+            "node": "Google Places API - Inventory1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tbl_lifestyle": {
+      "main": [
+        [
+          {
+            "node": "Process Lifestyle GeoData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tbl_lifestyle_inventory": {
+      "main": [
+        [
+          {
+            "node": "Process Inventory GeoData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "life_style_rates_packages": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tbl_lifestyle_terms_and_conditions": {
+      "main": [
+        [
+          {
+            "node": "Convert to File2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tbl_lifestyle_rates": {
+      "main": [
+        [
+          {
+            "node": "Convert to File3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "tbl_lifestyle_detail": {
+      "main": [
+        [
+          {
+            "node": "Convert to File4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Lifestyle GeoData": {
+      "main": [
+        [
+          {
+            "node": "Convert to File5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Inventory GeoData": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Places API - Inventory1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "tbl_lifestyle",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "tbl_lifestyle_detail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "tbl_lifestyle_rates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "life_style_rates_packages",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "tbl_lifestyle_inventory",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "tbl_lifestyle_terms_and_conditions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 4",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File2": {
+      "main": [
+        [
+          {
+            "node": "Merge All Files",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File3": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File4": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File5": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 1": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 2": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 3": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 4": {
+      "main": [
+        [
+          {
+            "node": "Merge All Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Files": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Has Binary Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Binary Data": {
+      "main": [
+        [
+          {
+            "node": "Check File Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9ba9f5f8-b465-4583-aba6-963d95ccd9ab",
+  "meta": {
+    "instanceId": "17d27b2dfb2b2db522a38b21373be6719cdc8405743bf3bd19aed8a16c488d05"
+  },
+  "id": "sBG0Tz2UneqXKznZ",
+  "tags": [
+    {
+      "updatedAt": "2026-01-20T06:42:00.049Z",
+      "createdAt": "2026-01-20T06:42:00.049Z",
+      "id": "rPwgpfTzszbP4BmN",
+      "name": "lifestyle"
+    }
+  ]
+}

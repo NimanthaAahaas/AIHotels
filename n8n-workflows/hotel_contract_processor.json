@@ -1,0 +1,916 @@
+{
+  "name": "Hotel Contract Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "process-hotel-contract",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 640],
+      "webhookId": "process-hotel-contract"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition-has-binary",
+              "leftValue": "={{ Object.keys($json.binary || {}).length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-binary-data",
+      "name": "Has Binary Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 640]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition-pdf",
+              "leftValue": "={{ $json.binary?.file?.mimeType || $json.binary?.data?.mimeType || '' }}",
+              "rightValue": "application/pdf",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-file-type",
+      "name": "Check File Type",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 560]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "extract-from-pdf",
+      "name": "Extract from PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [840, 480]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "id": "extract-from-docx",
+      "name": "Extract from DOCX",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [840, 640],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a data extraction expert specializing in hotel contracts. Extract all hotel information from the following document text.\n\nCRITICAL INSTRUCTION FOR RATES:\nThe contract may have MULTIPLE DATE PERIODS with DIFFERENT RATES. For example:\n- Period 1: 01.05.26 – 30.06.26 with rates 300, 325, 350...\n- Period 2: 01.07.26 – 31.08.26 with rates 320, 350, 400...\n- Period 3: 01.09.26 – 31.10.26 with rates 300, 325, 350...\n\nIMPORTANT: You MUST create a SEPARATE rate entry in hotel_room_rates for EACH room category for EACH date period!\nThe system will automatically expand these entries for Single/Double room types.\n\nALSO IMPORTANT - MEAL PLANS:\n- Look for meal plan indicators: BB (Bed & Breakfast), HB (Half Board), FB (Full Board), AI (All Inclusive), RO (Room Only)\n- If multiple meal plans exist (e.g., BB and HB rates shown separately), include the meal_plan field for each rate\n- If only one meal plan is mentioned, use that for all rates\n\nExtract the following information and return as a JSON object:\n\n1. hotel: (single object)\n   - hotel_name, hotel_description, star_classification, auto_confirmation (0 or 1), triggers, hotel_classification\n   - longitude, latitude, provider, hotel_address, trip_advisor_link, hotel_image\n   - country (2-letter code like LK, IN, etc.), city, micro_location, hotel_status (1=active, 0=inactive)\n   - start_date (overall contract start in YYYY-MM-DD format), end_date (overall contract end in YYYY-MM-DD format)\n   - vendor_id, additional_data_1 (currency like USD, LKR), markup, sub_description\n\n2. hotel_details: (single object)\n   - driver_accomadation (yes/no), lift_status (yes/no), vehicle_approchable (yes/no)\n   - ac_status (yes/no), covid_safe (yes/no)\n   - feature1, feature2, feature3, feature4 (hotel features/amenities)\n   - preferred (yes/no)\n\n3. hotel_room_categories: (array of objects) - MUST include ALL room categories from the rate table!\n   - room_category_name (e.g., \"Deluxe\", \"Premium Deluxe\", \"Premium Deluxe Signature\", \"Honeymoon Deluxe\", \"Royal Deluxe\", \"2 Bed-Room Suite\", \"Grand Executive Suite (3 Rooms)\")\n\n4. hotel_room_types: (array of objects)\n   - room_category_type: Always include both \"Single\" and \"Double\"\n\n5. hotel_room_rates: (array of objects - CREATE MULTIPLE ENTRIES!)\n   For EACH room category AND EACH date period, create an entry with:\n   - market_nationality: \"All\"\n   - currency: (USD, LKR, etc.)\n   - adult_rate: the rate for that room category in that period (use the Single/Double BB Basis rate)\n   - child_with_bed_rate: 80 (default)\n   - child_without_bed_rate: 40 (default)\n   - child_foc_age: \"0-6\"\n   - child_with_no_bed_age: \"6-11.99\"\n   - child_with_bed_age: \"6-11.99\"\n   - adult_age: \"12+\"\n   - book_by_days: 0\n   - meal_plan: \"BB\" or \"HB\" or other (use the meal plan from the contract)\n   - room_category_id: the EXACT room category name from the table\n   - booking_start_date: START of this period in YYYY-MM-DD format\n   - booking_end_date: END of this period in YYYY-MM-DD format\n   - payment_type: \"Advance\"\n   - blackout_dates: \"\"\n   - blackout_days: \"\"\n\n6. hotel_terms_conditions: (single object)\n   - general_tc, cancellation_policy, cancellation_deadline\n\n7. hotel_room_inventories: [] (empty array, will be auto-generated)\n\n8. hotel_room_daily_inventories: [] (empty array, will be auto-generated)\n\nEXAMPLE OUTPUT for hotel_room_rates:\nIf the contract shows 3 periods and 7 room categories with BB meal plan:\n- Period 1 (01.05.26-30.06.26): Deluxe=300, Premium Deluxe=325, etc.\n- Period 2 (01.07.26-31.08.26): Deluxe=320, Premium Deluxe=350, etc.\n- Period 3 (01.09.26-31.10.26): Deluxe=300, Premium Deluxe=325, etc.\n\nYou should create 21 entries (7 categories × 3 periods):\n[\n  {\"room_category_id\": \"Deluxe\", \"adult_rate\": 300, \"meal_plan\": \"BB\", \"booking_start_date\": \"2026-05-01\", \"booking_end_date\": \"2026-06-30\", ...},\n  {\"room_category_id\": \"Premium Deluxe\", \"adult_rate\": 325, \"meal_plan\": \"BB\", \"booking_start_date\": \"2026-05-01\", \"booking_end_date\": \"2026-06-30\", ...},\n  ... (all 7 categories for period 1)\n  {\"room_category_id\": \"Deluxe\", \"adult_rate\": 320, \"meal_plan\": \"BB\", \"booking_start_date\": \"2026-07-01\", \"booking_end_date\": \"2026-08-31\", ...},\n  ... (all 7 categories for period 2)\n  ... (all 7 categories for period 3)\n]\n\nDocument Text:\n{{ $json.data ? $json.data : ($json.text ? $json.text : 'No document text found') }}\n\nReturn ONLY valid JSON. ALL DATES MUST BE IN YYYY-MM-DD FORMAT."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ai-extract-data",
+      "name": "AI Extract Document Data",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.4,
+      "position": [1040, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simply pass through the AI extracted data\nconst items = $input.all();\nreturn items;"
+      },
+      "id": "transform-data",
+      "name": "Transform to Table Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI extracted data for hotel contracts\n// First, strip any markdown code blocks if present\nlet rawContent = $input.first().json.message.content;\nif (typeof rawContent === 'string') {\n  rawContent = rawContent.trim();\n  // Remove markdown code blocks\n  if (rawContent.startsWith('```json')) {\n    rawContent = rawContent.slice(7);\n  } else if (rawContent.startsWith('```')) {\n    rawContent = rawContent.slice(3);\n  }\n  if (rawContent.endsWith('```')) {\n    rawContent = rawContent.slice(0, -3);\n  }\n  rawContent = rawContent.trim();\n}\nconst parsedData = JSON.parse(rawContent);\n\n// Current timestamp\nconst now = new Date().toISOString().slice(0, 19).replace('T', ' ');\nconst today = new Date().toISOString().slice(0, 10);\n\n// Calculate end date (360 days from today)\nconst endDate = new Date();\nendDate.setDate(endDate.getDate() + 360);\nconst inventoryEndDate = endDate.toISOString().slice(0, 10);\n\n// Extract hotel data\nconst hotelData = parsedData.hotel || {};\nconst hotelDetailsData = parsedData.hotel_details || {};\nconst roomCategories = parsedData.hotel_room_categories || [];\nconst roomTypesFromAI = parsedData.hotel_room_types || [];\nconst roomRatesFromAI = parsedData.hotel_room_rates || [];\nconst termsConditions = parsedData.hotel_terms_conditions || {};\nconst roomInventories = parsedData.hotel_room_inventories || [];\nconst dailyInventories = parsedData.hotel_room_daily_inventories || [];\n\n// Extract unique meal plans from AI data (default to ['BB'] if not found)\nconst mealPlansSet = new Set();\nroomRatesFromAI.forEach(rate => {\n  if (rate.meal_plan) {\n    const plans = String(rate.meal_plan).split(',').map(p => p.trim().toUpperCase());\n    plans.forEach(p => mealPlansSet.add(p));\n  }\n});\nconst mealPlans = mealPlansSet.size > 0 ? Array.from(mealPlansSet) : ['BB'];\n\n// Extract unique date periods from AI data\nconst datePeriodsMap = new Map();\nroomRatesFromAI.forEach(rate => {\n  const key = `${rate.booking_start_date}_${rate.booking_end_date}`;\n  if (rate.booking_start_date && rate.booking_end_date && !datePeriodsMap.has(key)) {\n    datePeriodsMap.set(key, { start: rate.booking_start_date, end: rate.booking_end_date });\n  }\n});\nconst datePeriods = Array.from(datePeriodsMap.values());\n\n// Extract unique room types (default to Single and Double)\nconst roomTypesSet = new Set();\nroomRatesFromAI.forEach(rate => {\n  if (rate.room_type_id) roomTypesSet.add(rate.room_type_id);\n});\nif (roomTypesSet.size === 0) {\n  roomTypesSet.add('Single');\n  roomTypesSet.add('Double');\n}\nconst roomTypesList = Array.from(roomTypesSet);\n\n// Create a lookup map for rates: key = \"period_category_mealPlan\" -> rate data\nconst ratesLookup = new Map();\nroomRatesFromAI.forEach(rate => {\n  const periodKey = `${rate.booking_start_date}_${rate.booking_end_date}`;\n  const categoryKey = rate.room_category_id || '';\n  const mealPlanKey = (rate.meal_plan || 'BB').toUpperCase();\n  const key = `${periodKey}_${categoryKey}_${mealPlanKey}`;\n  if (!ratesLookup.has(key)) {\n    ratesLookup.set(key, rate);\n  }\n});\n\n// Generate complete room rates with all combinations\nconst roomRates = [];\nlet cardId = 100; // Starting card_id from 100\n\n// Sort periods by start date\ndatePeriods.sort((a, b) => a.start.localeCompare(b.start));\n\n// Get list of room category names\nconst categoryNames = roomCategories.map(cat => cat.room_category_name).filter(n => n);\n\n// If no categories from AI, try to extract from rates\nif (categoryNames.length === 0) {\n  const catSet = new Set();\n  roomRatesFromAI.forEach(rate => {\n    if (rate.room_category_id) catSet.add(rate.room_category_id);\n  });\n  catSet.forEach(cat => categoryNames.push(cat));\n}\n\n// Generate rates for each combination: period × meal_plan × category × room_type\nfor (const period of datePeriods) {\n  for (const mealPlan of mealPlans) {\n    for (const category of categoryNames) {\n      // Get rate data for this period/category/mealPlan combination\n      const lookupKey = `${period.start}_${period.end}_${category}_${mealPlan}`;\n      const rateData = ratesLookup.get(lookupKey) || roomRatesFromAI.find(r => \n        r.room_category_id === category && \n        r.booking_start_date === period.start && \n        r.booking_end_date === period.end\n      ) || roomRatesFromAI.find(r => r.room_category_id === category) || {};\n      \n      const currentCardId = cardId;\n      \n      // Create entry for each room type (Single, Double) with SAME card_id\n      for (const roomType of roomTypesList) {\n        roomRates.push({\n          room_category_id: category,\n          room_type_id: roomType,\n          booking_start_date: period.start,\n          booking_end_date: period.end,\n          meal_plan: mealPlan,\n          market_nationality: rateData.market_nationality || 'All',\n          currency: rateData.currency || 'USD',\n          adult_rate: parseFloat(rateData.adult_rate) || 0,\n          child_with_bed_rate: parseFloat(rateData.child_with_bed_rate) || 80,\n          child_without_bed_rate: parseFloat(rateData.child_without_bed_rate) || 40,\n          child_foc_age: rateData.child_foc_age || '0-6',\n          child_with_no_bed_age: rateData.child_with_no_bed_age || '6-11.99',\n          child_with_bed_age: rateData.child_with_bed_age || '6-11.99',\n          adult_age: rateData.adult_age || '12+',\n          book_by_days: parseInt(rateData.book_by_days) || 0,\n          payment_type: rateData.payment_type || 'Advance',\n          blackout_dates: rateData.blackout_dates || '',\n          blackout_days: rateData.blackout_days || '',\n          card_id: currentCardId,\n          actual_adult_rate: parseFloat(rateData.actual_adult_rate) || parseFloat(rateData.adult_rate) || 0,\n          actual_child_with_bed_rate: parseFloat(rateData.actual_child_with_bed_rate) || parseFloat(rateData.child_with_bed_rate) || 80,\n          actual_child_without_bed_rate: parseFloat(rateData.actual_child_without_bed_rate) || parseFloat(rateData.child_without_bed_rate) || 40,\n          min_adult_occupancy: parseInt(rateData.min_adult_occupancy) || 1,\n          max_adult_occupancy: parseInt(rateData.max_adult_occupancy) || 2,\n          min_child_occupancy: parseInt(rateData.min_child_occupancy) || 0,\n          max_child_occupancy: parseInt(rateData.max_child_occupancy) || 2,\n          total_occupancy: parseInt(rateData.total_occupancy) || 3\n        });\n      }\n      \n      // Increment card_id for next room category\n      cardId++;\n    }\n  }\n}\n\n// TABLE 1: hotels\nconst hotels_table = [{\n  id: '',\n  hotel_name: hotelData.hotel_name || 'Unknown Hotel',\n  hotel_description: hotelData.hotel_description || '',\n  star_classification: hotelData.star_classification || '',\n  auto_confirmation: hotelData.auto_confirmation || 0,\n  triggers: hotelData.triggers || 0,\n  hotel_classification: hotelData.hotel_classification || '',\n  longitude: hotelData.longitude || '',\n  latitude: hotelData.latitude || '',\n  provider: hotelData.provider || '',\n  hotel_address: hotelData.hotel_address || '',\n  trip_advisor_link: hotelData.trip_advisor_link || '',\n  hotel_image: hotelData.hotel_image || '',\n  country: hotelData.country || 'LK',\n  city: hotelData.city || '',\n  micro_location: hotelData.micro_location || hotelData.city || '',\n  hotel_status: hotelData.hotel_status || '1',\n  start_date: hotelData.start_date || today,\n  end_date: hotelData.end_date || inventoryEndDate,\n  vendor_id: hotelData.vendor_id || '',\n  updated_by: '',\n  created_at: now,\n  updated_at: now,\n  additional_data_1: hotelData.additional_data_1 || 'USD',\n  markup: hotelData.markup || 3,\n  sub_description: hotelData.sub_description || '',\n  deleted_at: null,\n  temp_column: ''\n}];\n\n// TABLE 2: hotel_details\nconst hotel_details_table = [{\n  id: '',\n  hotel_id: '',\n  driver_accomadation: hotelDetailsData.driver_accomadation || 'no',\n  lift_status: hotelDetailsData.lift_status || 'no',\n  vehicle_approchable: hotelDetailsData.vehicle_approchable || 'yes',\n  ac_status: hotelDetailsData.ac_status || 'yes',\n  covid_safe: hotelDetailsData.covid_safe || 'yes',\n  feature1: hotelDetailsData.feature1 || '',\n  feature2: hotelDetailsData.feature2 || '',\n  feature3: hotelDetailsData.feature3 || '',\n  feature4: hotelDetailsData.feature4 || '',\n  preferred: hotelDetailsData.preferred || 'no',\n  updated_by: '',\n  created_at: now,\n  updated_at: now,\n  hotel_detailscol: '',\n  deleted_at: null\n}];\n\n// TABLE 3: hotel_room_categories\nconst hotel_room_categories_table = roomCategories.length > 0 \n  ? roomCategories.map((cat, index) => ({\n      id: '',\n      hotel_id: '',\n      room_category_name: cat.room_category_name || '',\n      created_at: now,\n      updated_at: now,\n      deleted_at: null\n    }))\n  : [{ id: '', hotel_id: '', room_category_name: '', created_at: now, updated_at: now, deleted_at: null }];\n\n// TABLE 4: hotel_room_types\nconst hotel_room_types_table = roomTypesList.map((type) => ({\n  id: '',\n  hotel_id: '',\n  room_category_type: type,\n  created_at: now,\n  updated_at: now,\n  deleted_at: null\n}));\n\n// TABLE 5: hotel_room_rates\nconst hotel_room_rates_table = roomRates.length > 0\n  ? roomRates.map((rate, index) => ({\n      id: '',\n      hotel_id: '',\n      market_nationality: rate.market_nationality || 'All',\n      currency: rate.currency || 'USD',\n      adult_rate: parseFloat(rate.adult_rate) || 0,\n      child_with_bed_rate: parseFloat(rate.child_with_bed_rate) || 80,\n      child_without_bed_rate: parseFloat(rate.child_without_bed_rate) || 40,\n      child_foc_age: rate.child_foc_age || '0-6',\n      child_with_no_bed_age: rate.child_with_no_bed_age || '6-11.99',\n      child_with_bed_age: rate.child_with_bed_age || '6-11.99',\n      adult_age: rate.adult_age || '12+',\n      book_by_days: parseInt(rate.book_by_days) || 0,\n      meal_plan: rate.meal_plan || 'BB',\n      room_category_id: rate.room_category_id || '',\n      room_type_id: rate.room_type_id || '',\n      booking_start_date: rate.booking_start_date || today,\n      booking_end_date: rate.booking_end_date || inventoryEndDate,\n      payment_type: rate.payment_type || 'Advance',\n      blackout_dates: rate.blackout_dates || '',\n      blackout_days: rate.blackout_days || '',\n      created_at: now,\n      updated_at: now,\n      card_id: rate.card_id || (100 + index),\n      deleted_at: null,\n      actual_adult_rate: parseFloat(rate.actual_adult_rate) || parseFloat(rate.adult_rate) || 0,\n      actual_child_with_bed_rate: parseFloat(rate.actual_child_with_bed_rate) || parseFloat(rate.child_with_bed_rate) || 80,\n      actual_child_without_bed_rate: parseFloat(rate.actual_child_without_bed_rate) || parseFloat(rate.child_without_bed_rate) || 40,\n      min_adult_occupancy: parseInt(rate.min_adult_occupancy) || 1,\n      max_adult_occupancy: parseInt(rate.max_adult_occupancy) || 2,\n      min_child_occupancy: parseInt(rate.min_child_occupancy) || 0,\n      max_child_occupancy: parseInt(rate.max_child_occupancy) || 2,\n      total_occupancy: parseInt(rate.total_occupancy) || 3\n    }))\n  : [{\n      id: '', hotel_id: '', market_nationality: 'All', currency: 'USD', adult_rate: 0,\n      child_with_bed_rate: 80, child_without_bed_rate: 40, child_foc_age: '0-6',\n      child_with_no_bed_age: '6-11.99', child_with_bed_age: '6-11.99', adult_age: '12+',\n      book_by_days: 0, meal_plan: 'BB', room_category_id: '', room_type_id: '',\n      booking_start_date: today, booking_end_date: inventoryEndDate, payment_type: 'Advance',\n      blackout_dates: '', blackout_days: '', created_at: now, updated_at: now, card_id: 100,\n      deleted_at: null, actual_adult_rate: 0, actual_child_with_bed_rate: 80,\n      actual_child_without_bed_rate: 40, min_adult_occupancy: 1, max_adult_occupancy: 2,\n      min_child_occupancy: 0, max_child_occupancy: 2, total_occupancy: 3\n    }];\n\n// TABLE 6: hotel_terms_conditions\nconst hotel_terms_conditions_table = [{\n  id: '',\n  hotel_id: '',\n  general_tc: termsConditions.general_tc || '',\n  cancellation_policy: termsConditions.cancellation_policy || '',\n  cancellation_deadline: termsConditions.cancellation_deadline || '',\n  updated_by: '',\n  created_at: now,\n  updated_at: now,\n  deleted_at: null\n}];\n\n// TABLE 7: hotel_room_inventories - Same structure as hotel_room_rates\nconst hotel_room_inventories_table = roomRates.length > 0\n  ? roomRates.map((rate, index) => {\n      const inv = roomInventories[index] || {};\n      return {\n        id: '',\n        rate_id: '',\n        booking_start_date: rate.booking_start_date || today,\n        booking_end_date: rate.booking_end_date || inventoryEndDate,\n        allotment: parseInt(inv.allotment) || 10,\n        stop_sale_date: inv.stop_sale_date || '',\n        created_at: now,\n        updated_at: now,\n        deleted_at: null\n      };\n    })\n  : [{\n      id: '', rate_id: '', booking_start_date: today, booking_end_date: inventoryEndDate,\n      allotment: 10, stop_sale_date: '', created_at: now, updated_at: now, deleted_at: null\n    }];\n\n// TABLE 8: hotel_room_daily_inventories\nconst hotel_room_daily_inventories_table = [];\n\nfunction parseContractDate(dateStr) {\n  if (!dateStr) return null;\n  dateStr = String(dateStr).trim();\n  if (dateStr.includes('.')) {\n    const parts = dateStr.split('.');\n    if (parts.length === 3) {\n      let day = parseInt(parts[0]);\n      let month = parseInt(parts[1]) - 1;\n      let year = parseInt(parts[2]);\n      if (year < 100) year += 2000;\n      return new Date(year, month, day);\n    }\n  }\n  if (dateStr.includes('-')) {\n    return new Date(dateStr + 'T00:00:00');\n  }\n  return new Date(dateStr);\n}\n\nfunction getDatesBetween(startDate, endDate) {\n  const dates = [];\n  let currentDate = new Date(startDate);\n  const end = new Date(endDate);\n  while (currentDate <= end) {\n    dates.push(currentDate.toISOString().slice(0, 10));\n    currentDate.setDate(currentDate.getDate() + 1);\n  }\n  return dates;\n}\n\nconst categoryDateRanges = {};\nif (roomRates.length > 0) {\n  roomRates.forEach(rate => {\n    const categoryName = rate.room_category_id || '';\n    const startDateStr = rate.booking_start_date;\n    const endDateStr = rate.booking_end_date;\n    if (categoryName && startDateStr && endDateStr) {\n      if (!categoryDateRanges[categoryName]) {\n        categoryDateRanges[categoryName] = [];\n      }\n      const periodKey = startDateStr + '_' + endDateStr;\n      if (!categoryDateRanges[categoryName].find(p => p.key === periodKey)) {\n        categoryDateRanges[categoryName].push({\n          key: periodKey,\n          start: parseContractDate(startDateStr),\n          end: parseContractDate(endDateStr)\n        });\n      }\n    }\n  });\n}\n\nif (Object.keys(categoryDateRanges).length === 0 && roomCategories.length > 0) {\n  const contractStart = parseContractDate(hotelData.start_date) || new Date();\n  const contractEnd = parseContractDate(hotelData.end_date) || new Date(new Date().setDate(new Date().getDate() + 180));\n  roomCategories.forEach(cat => {\n    const categoryName = cat.room_category_name || '';\n    if (categoryName) {\n      categoryDateRanges[categoryName] = [{\n        key: 'default',\n        start: contractStart,\n        end: contractEnd\n      }];\n    }\n  });\n}\n\nconst defaultInventoryId = 0;\nconst defaultDailyAllotment = 5;\nconst defaultUsed = 0;\nconst defaultBalance = 5;\n\nfor (const categoryName of Object.keys(categoryDateRanges)) {\n  const periods = categoryDateRanges[categoryName];\n  for (const period of periods) {\n    if (period.start && period.end && !isNaN(period.start.getTime()) && !isNaN(period.end.getTime())) {\n      const allDates = getDatesBetween(period.start, period.end);\n      for (const dateStr of allDates) {\n        hotel_room_daily_inventories_table.push({\n          id: '',\n          hotel_id: '',\n          inventory_id: defaultInventoryId,\n          room_category_id: categoryName,\n          date: dateStr,\n          daily_allotment: defaultDailyAllotment,\n          used: defaultUsed,\n          balance: defaultBalance,\n          created_at: now,\n          updated_at: now,\n          deleted_at: null\n        });\n      }\n    }\n  }\n}\n\nreturn [{\n  json: {\n    extracted_raw_data: parsedData,\n    tables: {\n      hotels: hotels_table,\n      hotel_details: hotel_details_table,\n      hotel_room_categories: hotel_room_categories_table,\n      hotel_room_types: hotel_room_types_table,\n      hotel_room_rates: hotel_room_rates_table,\n      hotel_terms_conditions: hotel_terms_conditions_table,\n      hotel_room_inventories: hotel_room_inventories_table,\n      hotel_room_daily_inventories: hotel_room_daily_inventories_table\n    }\n  }\n}];"
+      },
+      "id": "format-tables",
+      "name": "Format Tables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 560]
+    },
+    {
+      "parameters": {
+        "url": "=https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "={{ $json.tables.hotels[0].hotel_name + ' ' + $json.tables.hotels[0].city }}"
+            },
+            {
+              "name": "inputtype",
+              "value": "textquery"
+            },
+            {
+              "name": "fields",
+              "value": "formatted_address,geometry,name,place_id"
+            },
+            {
+              "name": "key",
+              "value": "AIzaSyA0Z8_GzoG68yaI8pAEkA_03Ig1N-6qki8"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "google-places-api",
+      "name": "Google Places API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Google Places API response and enrich hotel data\nconst googleApiResponse = $input.first().json;\nconst formatTablesData = $('Format Tables').first().json;\n\n// Extract Google Places API data\nlet googleAddress = '';\nlet googleLat = null;\nlet googleLng = null;\n\nif (googleApiResponse.status === 'OK' && googleApiResponse.candidates && googleApiResponse.candidates.length > 0) {\n  const candidate = googleApiResponse.candidates[0];\n  \n  if (candidate.formatted_address) {\n    googleAddress = candidate.formatted_address;\n  }\n  \n  if (candidate.geometry && candidate.geometry.location) {\n    googleLat = candidate.geometry.location.lat;\n    googleLng = candidate.geometry.location.lng;\n  }\n}\n\n// Get tables from Format Tables\nconst tables = formatTablesData.tables || {};\n\n// Update hotels table with Google API data\nif (tables.hotels && Array.isArray(tables.hotels)) {\n  tables.hotels = tables.hotels.map(function(record) {\n    return {\n      ...record,\n      hotel_address: record.hotel_address || googleAddress || '',\n      latitude: record.latitude || googleLat,\n      longitude: record.longitude || googleLng\n    };\n  });\n}\n\n// Return combined data\nreturn [{\n  json: {\n    extracted_raw_data: formatTablesData.extracted_raw_data,\n    google_places_data: {\n      address: googleAddress,\n      latitude: googleLat,\n      longitude: googleLng\n    },\n    tables: tables\n  }\n}];"
+      },
+      "id": "process-geodata",
+      "name": "Process GeoData",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotels table data\nconst inputData = $input.first().json;\nconst hotelsData = inputData.tables.hotels;\n\nif (Array.isArray(hotelsData)) {\n  return hotelsData.map(record => ({ json: record }));\n} else {\n  return { json: hotelsData };\n}"
+      },
+      "id": "tbl-hotels",
+      "name": "hotels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 160],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_details table data\nconst inputData = $input.first().json;\nconst detailsData = inputData.tables.hotel_details;\n\nif (Array.isArray(detailsData)) {\n  return detailsData.map(record => ({ json: record }));\n} else {\n  return { json: detailsData };\n}"
+      },
+      "id": "tbl-hotel-details",
+      "name": "hotel_details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 320],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_room_categories table data\nconst inputData = $input.first().json;\nconst categoriesData = inputData.tables.hotel_room_categories;\n\nif (Array.isArray(categoriesData)) {\n  return categoriesData.map(record => ({ json: record }));\n} else {\n  return { json: categoriesData };\n}"
+      },
+      "id": "tbl-room-categories",
+      "name": "hotel_room_categories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 480],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_room_types table data\nconst inputData = $input.first().json;\nconst typesData = inputData.tables.hotel_room_types;\n\nif (Array.isArray(typesData)) {\n  return typesData.map(record => ({ json: record }));\n} else {\n  return { json: typesData };\n}"
+      },
+      "id": "tbl-room-types",
+      "name": "hotel_room_types",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 640],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_room_rates table data\nconst inputData = $input.first().json;\nconst ratesData = inputData.tables.hotel_room_rates;\n\nif (Array.isArray(ratesData)) {\n  return ratesData.map(record => ({ json: record }));\n} else {\n  return { json: ratesData };\n}"
+      },
+      "id": "tbl-room-rates",
+      "name": "hotel_room_rates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 800],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_terms_conditions table data\nconst inputData = $input.first().json;\nconst termsData = inputData.tables.hotel_terms_conditions;\n\nif (Array.isArray(termsData)) {\n  return termsData.map(record => ({ json: record }));\n} else {\n  return { json: termsData };\n}"
+      },
+      "id": "tbl-terms",
+      "name": "hotel_terms_conditions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 960],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_room_inventories table data\nconst inputData = $input.first().json;\nconst inventoriesData = inputData.tables.hotel_room_inventories;\n\nif (Array.isArray(inventoriesData)) {\n  return inventoriesData.map(record => ({ json: record }));\n} else {\n  return { json: inventoriesData };\n}"
+      },
+      "id": "tbl-inventories",
+      "name": "hotel_room_inventories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 1120],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract hotel_room_daily_inventories table data\nconst inputData = $input.first().json;\nconst dailyData = inputData.tables.hotel_room_daily_inventories;\n\nif (Array.isArray(dailyData)) {\n  return dailyData.map(record => ({ json: record }));\n} else {\n  return { json: dailyData };\n}"
+      },
+      "id": "tbl-daily-inventories",
+      "name": "hotel_room_daily_inventories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2080, 1280],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotels.xlsx"
+        }
+      },
+      "id": "convert-hotels",
+      "name": "Convert hotels",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 160]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_details.xlsx"
+        }
+      },
+      "id": "convert-details",
+      "name": "Convert hotel_details",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 320]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_room_categories.xlsx"
+        }
+      },
+      "id": "convert-categories",
+      "name": "Convert hotel_room_categories",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 480]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_room_types.xlsx"
+        }
+      },
+      "id": "convert-types",
+      "name": "Convert hotel_room_types",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 640]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_room_rates.xlsx"
+        }
+      },
+      "id": "convert-rates",
+      "name": "Convert hotel_room_rates",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 800]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_terms_conditions.xlsx"
+        }
+      },
+      "id": "convert-terms",
+      "name": "Convert hotel_terms_conditions",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 960]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_room_inventories.xlsx"
+        }
+      },
+      "id": "convert-inventories",
+      "name": "Convert hotel_room_inventories",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 1120]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "hotel_room_daily_inventories.xlsx"
+        }
+      },
+      "id": "convert-daily",
+      "name": "Convert hotel_room_daily_inventories",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [2280, 1280]
+    },
+    {
+      "parameters": {},
+      "id": "merge-1",
+      "name": "Merge Files 1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 240]
+    },
+    {
+      "parameters": {},
+      "id": "merge-2",
+      "name": "Merge Files 2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 400]
+    },
+    {
+      "parameters": {},
+      "id": "merge-3",
+      "name": "Merge Files 3",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 560]
+    },
+    {
+      "parameters": {},
+      "id": "merge-4",
+      "name": "Merge Files 4",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 720]
+    },
+    {
+      "parameters": {},
+      "id": "merge-5",
+      "name": "Merge Files 5",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 880]
+    },
+    {
+      "parameters": {},
+      "id": "merge-6",
+      "name": "Merge Files 6",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 1040]
+    },
+    {
+      "parameters": {},
+      "id": "merge-all",
+      "name": "Merge All Files",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2480, 1200],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all Excel files from merged input and convert to base64\nconst response = {\n  success: true,\n  message: 'Successfully processed hotel contract',\n  files: {}\n};\n\nconst fileKeyMap = {\n  'hotels.xlsx': 'hotels',\n  'hotel_details.xlsx': 'hotel_details',\n  'hotel_room_categories.xlsx': 'hotel_room_categories',\n  'hotel_room_types.xlsx': 'hotel_room_types',\n  'hotel_room_rates.xlsx': 'hotel_room_rates',\n  'hotel_terms_conditions.xlsx': 'hotel_terms_conditions',\n  'hotel_room_inventories.xlsx': 'hotel_room_inventories',\n  'hotel_room_daily_inventories.xlsx': 'hotel_room_daily_inventories'\n};\n\n// Get all items from merged input\nconst allItems = $input.all();\n\n// Process each item and read binary data\nfor (let itemIndex = 0; itemIndex < allItems.length; itemIndex++) {\n  const item = allItems[itemIndex];\n  if (item.binary) {\n    for (const binaryKey of Object.keys(item.binary)) {\n      const binaryInfo = item.binary[binaryKey];\n      const fileName = binaryInfo.fileName || '';\n      const fileKey = fileKeyMap[fileName];\n      if (fileKey) {\n        try {\n          // Use helpers.getBinaryDataBuffer to read actual file content\n          const buffer = await helpers.getBinaryDataBuffer(itemIndex, binaryKey);\n          const base64Data = buffer.toString('base64');\n          response.files[fileKey] = base64Data;\n        } catch(e) {\n          // Fallback to direct access\n          if (binaryInfo.data && typeof binaryInfo.data === 'string' && binaryInfo.data.length > 50) {\n            response.files[fileKey] = binaryInfo.data;\n          }\n        }\n      }\n    }\n  }\n}\n\nreturn [{ json: response }];"
+      },
+      "id": "prepare-response",
+      "name": "Prepare Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2680, 720],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2880, 720]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Has Binary Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Binary Data": {
+      "main": [
+        [
+          {
+            "node": "Check File Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check File Type": {
+      "main": [
+        [
+          {
+            "node": "Extract from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from DOCX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from PDF": {
+      "main": [
+        [
+          {
+            "node": "AI Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from DOCX": {
+      "main": [
+        [
+          {
+            "node": "AI Extract Document Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Extract Document Data": {
+      "main": [
+        [
+          {
+            "node": "Transform to Table Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Table Format": {
+      "main": [
+        [
+          {
+            "node": "Format Tables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Tables": {
+      "main": [
+        [
+          {
+            "node": "Google Places API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Places API": {
+      "main": [
+        [
+          {
+            "node": "Process GeoData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process GeoData": {
+      "main": [
+        [
+          {
+            "node": "hotels",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_details",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_room_categories",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_room_types",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_room_rates",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_terms_conditions",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_room_inventories",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "hotel_room_daily_inventories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotels": {
+      "main": [
+        [
+          {
+            "node": "Convert hotels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_details": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_room_categories": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_room_categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_room_types": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_room_types",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_room_rates": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_room_rates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_terms_conditions": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_terms_conditions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_room_inventories": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_room_inventories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hotel_room_daily_inventories": {
+      "main": [
+        [
+          {
+            "node": "Convert hotel_room_daily_inventories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert hotels": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert hotel_details": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert hotel_room_categories": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert hotel_room_types": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert hotel_room_rates": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 4",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert hotel_terms_conditions": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 5",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert hotel_room_inventories": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 6",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert hotel_room_daily_inventories": {
+      "main": [
+        [
+          {
+            "node": "Merge All Files",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Files 1": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 2": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 3": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 4": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 5": {
+      "main": [
+        [
+          {
+            "node": "Merge Files 6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Files 6": {
+      "main": [
+        [
+          {
+            "node": "Merge All Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Files": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "hotel-contract-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "hotel-contract-processor",
+  "tags": [
+    {
+      "name": "hotels",
+      "id": "hotel-tag-1"
+    }
+  ]
+}
