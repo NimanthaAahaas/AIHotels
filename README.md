@@ -69,7 +69,7 @@ AIhotels/
 
 4. Edit `.env` and add your OpenAI API key:
    ```
-   PORT=3001
+   PORT=3003
    OPENAI_API_KEY=your_openai_api_key_here
    ```
 
@@ -191,7 +191,7 @@ Health check endpoint.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| PORT | Backend server port | 3001 |
+| PORT | Backend server port | 3003 |
 | OPENAI_API_KEY | OpenAI API key for data extraction | Required |
 | N8N_WEBHOOK_URL | n8n webhook URL (optional) | - |
 | OUTPUT_DIR | Directory for generated files | ./output |
@@ -204,7 +204,7 @@ Health check endpoint.
 
 2. **OpenAI API error**: Verify your API key is correct and has sufficient credits
 
-3. **CORS error**: Ensure the backend is running on port 3001
+3. **CORS error**: Ensure the backend is running on port 3003
 
 4. **Files not downloading**: Check that the session hasn't expired (1-hour limit)
 

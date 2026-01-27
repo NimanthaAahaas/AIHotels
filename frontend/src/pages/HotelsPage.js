@@ -4,7 +4,7 @@ import axios from 'axios';
 import aahaasLogo from '../images/aahaas_monoMain.png';
 
 // Backend API URLs
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = 'http://localhost:3003/api';
 
 function HotelsPage() {
   const navigate = useNavigate();

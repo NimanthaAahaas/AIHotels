@@ -6,7 +6,7 @@ function LifestylePage() {
   const navigate = useNavigate();
   // Add timestamp to force fresh load of iframe
   const [iframeKey] = useState(() => Date.now());
-  const lifestyleAppUrl = `http://localhost:3001/lifestyle-app/?t=${iframeKey}`;
+  const lifestyleAppUrl = `http://localhost:3003/lifestyle-app/?t=${iframeKey}`;
 
   // Step-by-step upload state
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -118,7 +118,7 @@ function LifestylePage() {
         if (rateId) formData.append('rate_id', rateId);
       }
 
-      const response = await fetch(`http://localhost:3001${step.endpoint}`, {
+      const response = await fetch(`http://localhost:3003${step.endpoint}`, {
         method: 'POST',
         body: formData,
       });
