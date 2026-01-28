@@ -6,12 +6,12 @@ import aahaasLogo from '../images/aahaas_monoMain.png';
 // Backend API URLs
 // Use 'process-direct' for local OpenAI processing with multi-step workflow
 // Use 'proxy-n8n' for n8n workflow (returns all files at once, no sessionId)
-const API_URL = 'http://localhost:3003/api/process-direct';
-const DB_UPLOAD_SINGLE_URL = 'http://localhost:3003/api/upload-single-table';
-const GENERATE_STEP2_URL = 'http://localhost:3003/api/generate-step2-sheets';
-const GENERATE_STEP3_URL = 'http://localhost:3003/api/generate-step3-sheets';
-const GENERATE_STEP4_URL = 'http://localhost:3003/api/generate-step4-sheets';
-const GET_LAST_HOTEL_ID_URL = 'http://localhost:3003/api/get-last-hotel-id';
+const API_URL = 'https://makeaibackend.aahaas.com/api/process-direct';
+const DB_UPLOAD_SINGLE_URL = 'https://makeaibackend.aahaas.com/api/upload-single-table';
+const GENERATE_STEP2_URL = 'https://makeaibackend.aahaas.com/api/generate-step2-sheets';
+const GENERATE_STEP3_URL = 'https://makeaibackend.aahaas.com/api/generate-step3-sheets';
+const GENERATE_STEP4_URL = 'https://makeaibackend.aahaas.com/api/generate-step4-sheets';
+const GET_LAST_HOTEL_ID_URL = 'https://makeaibackend.aahaas.com/api/get-last-hotel-id';
 
 // Steps configuration
 const STEPS = {
