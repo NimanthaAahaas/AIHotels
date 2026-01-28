@@ -66,7 +66,7 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 // Serve lifestyle app static files
 const lifestyleDir = path.join(__dirname, 'lifestyle');
 app.use('/lifestyle-app', express.static(lifestyleDir));
-
+console.log(lifestyleDir,"Lifestyle Dirrrrr")
 // Serve lifestyle app for any route under /lifestyle-app (SPA support)
 app.get('/lifestyle-app/*', (req, res) => {
   res.sendFile(path.join(lifestyleDir, 'index.html'));
