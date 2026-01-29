@@ -3585,6 +3585,267 @@ function generateTermsData(extractedData, lifestyleId, now) {
   }));
 }
 
+// ========== EXTRACT RATES FROM CONTRACT PDF FOR EXISTING HOTEL ==========
+// This endpoint allows users to upload a new contract PDF and extract rates for an existing hotel
+app.post('/api/extract-rates-from-contract', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const hotelId = req.body.hotelId;
+    if (!hotelId) {
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ success: false, message: 'hotelId is required' });
+    }
+
+    console.log(`\n========== EXTRACT RATES FROM CONTRACT for hotel_id: ${hotelId} ==========`);
+    console.log('Processing file:', req.file.originalname);
+
+    // Connect to database to get existing room categories for this hotel
+    let connection;
+    let existingCategories = [];
+    try {
+      connection = await mysql.createConnection(DB_CONFIG);
+      const [categories] = await connection.execute(
+        'SELECT id, room_category_name FROM hotel_room_categories WHERE hotel_id = ? AND deleted_at IS NULL',
+        [hotelId]
+      );
+      existingCategories = categories;
+      console.log(`Found ${existingCategories.length} existing room categories for hotel ${hotelId}`);
+      await connection.end();
+    } catch (dbError) {
+      console.error('Database error getting categories:', dbError.message);
+      // Continue without existing categories - AI will extract from document
+    }
+
+    // Extract text from the document
+    const extractedText = await extractTextFromFile(req.file.path, req.file.mimetype);
+    console.log('Extracted text length:', extractedText.length);
+
+    if (extractedText.length < 50) {
+      fs.unlinkSync(req.file.path);
+      throw new Error('Could not extract sufficient text from the document');
+    }
+
+    // Create a specialized prompt for extracting ONLY rates from the contract
+    const existingCategoriesInfo = existingCategories.length > 0 
+      ? `\n\nIMPORTANT: This hotel already has the following room categories in the database (use these EXACT names for room_category_id):\n${existingCategories.map(c => `- "${c.room_category_name}" (ID: ${c.id})`).join('\n')}`
+      : '';
+
+    const ratesOnlyPrompt = `You are an expert at extracting hotel room rates from contracts. Extract ALL rates information from this document.
+${existingCategoriesInfo}
+
+IMPORTANT: Extract the ACTUAL rates from the document. Do NOT invent or make up data.
+
+CRITICAL INSTRUCTIONS:
+
+1. ROOM TYPES: Hotels typically have different rates for different room occupancy types:
+   - Single (1 person)
+   - Double (2 persons)
+   - Triple (3 persons)
+   - Family/Quad (4 persons)
+   Each room type usually has a DIFFERENT rate. Extract the SPECIFIC rate for EACH room type.
+
+2. ROOM CATEGORIES: These are the room classes like "Deluxe Room", "Superior Room", "Suite", etc.
+   Each category can have multiple room types with different rates.
+
+3. MEAL PLANS: Common meal plans are BB (Bed & Breakfast), HB (Half Board), FB (Full Board), AI (All Inclusive), RO (Room Only).
+   Different meal plans may have different rates.
+
+4. DATE PERIODS: The contract may have MULTIPLE DATE PERIODS with DIFFERENT RATES.
+   Create a SEPARATE entry for each: room_category × room_type × meal_plan × date_period
+
+EXAMPLE: If the contract shows for "Deluxe Room" with BB meal plan for period 01-05-2026 to 15-07-2026:
+- Single: 40 USD
+- Double: 45 USD  
+- Triple: 75 USD
+- Family: 105 USD
+
+You should create 4 rate entries:
+[
+  {"room_category_id": "Deluxe Room", "room_type_id": "Single", "adult_rate": 40, "meal_plan": "BB", "booking_start_date": "2026-05-01", "booking_end_date": "2026-07-15", ...},
+  {"room_category_id": "Deluxe Room", "room_type_id": "Double", "adult_rate": 45, "meal_plan": "BB", "booking_start_date": "2026-05-01", "booking_end_date": "2026-07-15", ...},
+  {"room_category_id": "Deluxe Room", "room_type_id": "Triple", "adult_rate": 75, "meal_plan": "BB", "booking_start_date": "2026-05-01", "booking_end_date": "2026-07-15", ...},
+  {"room_category_id": "Deluxe Room", "room_type_id": "Family", "adult_rate": 105, "meal_plan": "BB", "booking_start_date": "2026-05-01", "booking_end_date": "2026-07-15", ...}
+]
+
+Return a JSON object with this structure:
+{
+  "hotel_room_rates": [
+    {
+      "market_nationality": "All",
+      "currency": "USD or LKR etc",
+      "adult_rate": number (the SPECIFIC rate for this room type),
+      "child_with_bed_rate": number (if specified, otherwise 0),
+      "child_without_bed_rate": number (if specified, otherwise 0),
+      "child_foc_age": "0-6",
+      "child_with_no_bed_age": "6-11.99",
+      "child_with_bed_age": "6-11.99",
+      "adult_age": "12+",
+      "book_by_days": 0,
+      "meal_plan": "BB/HB/FB/AI/RO",
+      "room_category_id": "EXACT room category name",
+      "room_type_id": "Single/Double/Triple/Family/Quad etc",
+      "booking_start_date": "YYYY-MM-DD",
+      "booking_end_date": "YYYY-MM-DD",
+      "payment_type": "Advance"
+    }
+  ],
+  "hotel_room_categories": [
+    { "room_category_name": "Category Name" }
+  ],
+  "hotel_room_types": [
+    { "room_category_type": "Single" },
+    { "room_category_type": "Double" },
+    { "room_category_type": "Triple" },
+    { "room_category_type": "Family" }
+  ]
+}
+
+DATES MUST BE IN YYYY-MM-DD FORMAT.
+Return ONLY valid JSON. Extract EVERY rate combination from the document.`;
+
+    // Call OpenAI to extract rates
+    console.log('Calling OpenAI API for rates extraction...');
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: ratesOnlyPrompt },
+        { role: 'user', content: `Extract ALL hotel room rates from this contract document. Make sure to extract the specific rate for each room type (Single, Double, Triple, Family, etc.) as they usually have different rates:\n\n${extractedText}` }
+      ],
+      temperature: 0.1,
+      max_tokens: 16000,
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0].message.content;
+    console.log('OpenAI response received, parsing JSON...');
+    console.log('Response length:', content.length);
+    const extractedData = JSON.parse(content);
+    console.log('Extracted rates count from AI:', extractedData.hotel_room_rates?.length || 0);
+
+    // Log extracted rates for debugging
+    if (extractedData.hotel_room_rates?.length > 0) {
+      console.log('Sample extracted rates:');
+      extractedData.hotel_room_rates.slice(0, 5).forEach((r, i) => {
+        console.log(`  ${i+1}. ${r.room_category_id} - ${r.room_type_id} - ${r.meal_plan}: ${r.adult_rate} ${r.currency}`);
+      });
+    }
+
+    // DO NOT expand rates - use the AI extracted rates directly since they already have room_type_id
+    // The expandRates function was duplicating and incorrectly assigning rates
+    const ratesData = extractedData.hotel_room_rates || [];
+
+    // Create Excel file for rates
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const files = {};
+
+    // Helper to create Excel buffer
+    async function createExcelBuffer(sheetName, headers, data) {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Sheet');
+      worksheet.addRow(headers);
+
+      if (Array.isArray(data)) {
+        data.forEach(row => {
+          const rowData = headers.map(h => row[h] !== undefined ? row[h] : '');
+          worksheet.addRow(rowData);
+        });
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      return buffer.toString('base64');
+    }
+
+    // Create hotel_room_rates with hotel_id and card_id
+    const ratesHeaders = tableSchemas.hotel_room_rates;
+    let cardId = 100;
+    
+    // Group rates by category+period+meal_plan to assign same card_id
+    const cardIdMap = new Map();
+    
+    const finalRatesData = ratesData.map((rate) => {
+      // Create a key for card_id grouping (same category + period + meal_plan = same card_id)
+      const cardKey = `${rate.room_category_id}_${rate.booking_start_date}_${rate.booking_end_date}_${rate.meal_plan}`;
+      
+      if (!cardIdMap.has(cardKey)) {
+        cardIdMap.set(cardKey, cardId++);
+      }
+      
+      return {
+        ...rate,
+        hotel_id: parseInt(hotelId),
+        card_id: cardIdMap.get(cardKey),
+        created_at: now,
+        updated_at: now,
+        // Ensure numeric values
+        adult_rate: parseFloat(rate.adult_rate) || 0,
+        child_with_bed_rate: parseFloat(rate.child_with_bed_rate) || 0,
+        child_without_bed_rate: parseFloat(rate.child_without_bed_rate) || 0,
+        // Default values if not provided
+        market_nationality: rate.market_nationality || 'All',
+        child_foc_age: rate.child_foc_age || '0-6',
+        child_with_no_bed_age: rate.child_with_no_bed_age || '6-11.99',
+        child_with_bed_age: rate.child_with_bed_age || '6-11.99',
+        adult_age: rate.adult_age || '12+',
+        book_by_days: parseInt(rate.book_by_days) || 0,
+        payment_type: rate.payment_type || 'Advance',
+        blackout_dates: rate.blackout_dates || '',
+        blackout_days: rate.blackout_days || '',
+        min_adult_occupancy: parseInt(rate.min_adult_occupancy) || 1,
+        max_adult_occupancy: parseInt(rate.max_adult_occupancy) || 2,
+        min_child_occupancy: parseInt(rate.min_child_occupancy) || 0,
+        max_child_occupancy: parseInt(rate.max_child_occupancy) || 2,
+        total_occupancy: parseInt(rate.total_occupancy) || 3
+      };
+    });
+
+    files.hotel_room_rates = {
+      name: 'hotel_room_rates.xlsx',
+      data: await createExcelBuffer('hotel_room_rates', ratesHeaders, finalRatesData),
+      rows: finalRatesData.length
+    };
+
+    console.log(`Generated ${finalRatesData.length} rate rows for hotel_id: ${hotelId}`);
+
+    // Also return any new room categories found in the contract (in case they need to be added)
+    const newCategories = (extractedData.hotel_room_categories || []).filter(cat => {
+      const catName = cat.room_category_name?.toLowerCase();
+      return !existingCategories.some(ec => ec.room_category_name?.toLowerCase() === catName);
+    });
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    console.log(`========== COMPLETE: Rates extracted from contract ==========\n`);
+
+    res.json({
+      success: true,
+      message: `Successfully extracted ${ratesData.length} rates from contract.`,
+      hotelId: hotelId,
+      ratesCount: ratesData.length,
+      newCategoriesFound: newCategories,
+      existingCategories: existingCategories,
+      files: files
+    });
+
+  } catch (error) {
+    console.error('Error extracting rates from contract:', error);
+
+    // Clean up uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to extract rates from contract'
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Upload directory: ${uploadDir}`);

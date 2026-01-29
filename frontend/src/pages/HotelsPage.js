@@ -4,7 +4,11 @@ import axios from 'axios';
 import aahaasLogo from '../images/aahaas_monoMain.png';
 
 // Backend API URLs
+
 const API_BASE = 'https://makeaibackend.aahaas.com/api';
+
+// Use localhost for local development with the new extract-rates-from-contract endpoint
+// const API_BASE = 'http://localhost:3003/api';
 
 function HotelsPage() {
   const navigate = useNavigate();
@@ -29,6 +33,15 @@ function HotelsPage() {
   const [newCategoryHotelId, setNewCategoryHotelId] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
+  
+  // State for Contract PDF Upload (Extract Rates from Contract)
+  const [contractFile, setContractFile] = useState(null);
+  const [isExtractingRates, setIsExtractingRates] = useState(false);
+  const [extractedRatesFile, setExtractedRatesFile] = useState(null);
+  const [extractedRatesCount, setExtractedRatesCount] = useState(0);
+  const [newCategoriesFound, setNewCategoriesFound] = useState([]);
+  const [showContractUpload, setShowContractUpload] = useState(false);
+  const contractFileInputRef = useRef(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -115,6 +128,148 @@ function HotelsPage() {
       setGeneratedFiles({});
       setUploadStatus({});
     }
+  };
+
+  // Handle contract PDF file selection for rate extraction
+  const handleContractFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const allowedTypes = ['application/pdf', 'application/msword', 
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      const allowedExtensions = ['.pdf', '.doc', '.docx'];
+      
+      const hasValidExtension = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+      const hasValidType = allowedTypes.includes(file.type);
+      
+      if (!hasValidExtension && !hasValidType) {
+        setError('Please upload a PDF or Word document');
+        return;
+      }
+      setContractFile(file);
+      setError(null);
+      setExtractedRatesFile(null);
+      setExtractedRatesCount(0);
+      setNewCategoriesFound([]);
+      setSuccessMessage(`Contract file selected: ${file.name}`);
+    }
+  };
+
+  // Extract rates from contract PDF
+  const handleExtractRatesFromContract = async () => {
+    console.log('=== handleExtractRatesFromContract called ===');
+    console.log('contractFile:', contractFile);
+    console.log('hotelId:', hotelId);
+    
+    if (!contractFile || !hotelId) {
+      setError('Please select a contract file and ensure hotel ID is set');
+      return;
+    }
+
+    setIsExtractingRates(true);
+    setError(null);
+    setSuccessMessage('Extracting rates from contract... This may take a minute.');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', contractFile);
+      formData.append('hotelId', hotelId);
+
+      console.log('Sending request to:', `${API_BASE}/extract-rates-from-contract`);
+      
+      const response = await axios.post(`${API_BASE}/extract-rates-from-contract`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 180000, // 3 minutes timeout
+      });
+
+      console.log('Response received:', response.data);
+      console.log('Response files:', response.data.files);
+      console.log('Response hotel_room_rates:', response.data.files?.hotel_room_rates);
+
+      if (response.data.success) {
+        const ratesFile = response.data.files?.hotel_room_rates;
+        console.log('Setting extractedRatesFile to:', ratesFile);
+        
+        setExtractedRatesFile(ratesFile);
+        setExtractedRatesCount(response.data.ratesCount);
+        setNewCategoriesFound(response.data.newCategoriesFound || []);
+        setSuccessMessage(
+          `✅ Successfully extracted ${response.data.ratesCount} rates from contract! ` +
+          `Download the file to review, edit if needed, then upload to database.`
+        );
+        
+        // Clear the contract file input
+        setContractFile(null);
+        if (contractFileInputRef.current) {
+          contractFileInputRef.current.value = '';
+        }
+        
+        console.log('extractedRatesFile state should now be set');
+      } else {
+        throw new Error(response.data.message || 'Failed to extract rates');
+      }
+    } catch (err) {
+      console.error('Error extracting rates from contract:', err);
+      console.error('Error response:', err.response);
+      setError(err.response?.data?.message || err.message || 'Failed to extract rates from contract');
+    } finally {
+      setIsExtractingRates(false);
+    }
+  };
+
+  // Download extracted rates file
+  const handleDownloadExtractedRates = () => {
+    try {
+      if (!extractedRatesFile) {
+        setError('No extracted rates file available');
+        return;
+      }
+
+      const base64Data = typeof extractedRatesFile === 'string' ? extractedRatesFile : extractedRatesFile.data;
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `hotel_room_rates_extracted_${hotelId}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setSuccessMessage('Extracted rates downloaded. Review the file, edit if needed, then upload in Step 2.');
+    } catch (err) {
+      console.error('Error downloading extracted rates:', err);
+      setError('Failed to download extracted rates file');
+    }
+  };
+
+  // Use extracted rates file for upload (sets it as the uploaded file for Step 2)
+  const handleUseExtractedRates = () => {
+    if (!extractedRatesFile) {
+      setError('No extracted rates file available');
+      return;
+    }
+
+    // Convert base64 to File object for upload
+    const base64Data = typeof extractedRatesFile === 'string' ? extractedRatesFile : extractedRatesFile.data;
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const file = new File([blob], `hotel_room_rates_extracted_${hotelId}.xlsx`, { type: blob.type });
+
+    setUploadedFile(file);
+    setShowContractUpload(false);
+    setSuccessMessage('Extracted rates loaded! You can now upload them to the database in Step 2.');
   };
 
   // Upload rates to database AND generate inventory tables with correct rate_ids
@@ -394,6 +549,11 @@ function HotelsPage() {
     setUploadStatus({});
     setError(null);
     setSuccessMessage(null);
+    setContractFile(null);
+    setExtractedRatesFile(null);
+    setExtractedRatesCount(0);
+    setNewCategoriesFound([]);
+    setShowContractUpload(false);
   };
 
   // Format date for display
@@ -1201,6 +1361,178 @@ function HotelsPage() {
               </>
             )}
           </div>
+
+          {/* Step 1.5: Extract Rates from New Contract (Optional) */}
+          {ratesData.length > 0 && (
+            <div className="section-container">
+              <h2 className="section-title">
+                📄 Step 1.5: Extract Rates from New Contract (Optional)
+                <button 
+                  className="btn-secondary"
+                  style={{ marginLeft: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                  onClick={() => setShowContractUpload(!showContractUpload)}
+                >
+                  {showContractUpload ? '➖ Hide' : '➕ Show'}
+                </button>
+              </h2>
+              
+              {showContractUpload && (
+                <>
+                  <p style={{ color: '#666', marginBottom: '1rem' }}>
+                    Instead of manually editing the rates Excel, you can upload a new contract PDF to automatically extract rates. The AI will:
+                  </p>
+                  <ol style={{ color: '#a0a0a0', fontSize: '0.9rem', marginLeft: '1.25rem', marginBottom: '1.5rem', lineHeight: 1.8 }}>
+                    <li>Read the contract PDF and extract all room rates</li>
+                    <li>Match room categories with existing categories in the database</li>
+                    <li>Generate an Excel file with the new rates ready for upload</li>
+                  </ol>
+
+                  <div 
+                    className={`upload-zone ${contractFile ? 'has-file' : ''}`}
+                    onClick={() => contractFileInputRef.current?.click()}
+                    style={{ borderColor: contractFile ? '#3b82f6' : undefined }}
+                  >
+                    {contractFile ? (
+                      <>
+                        <span className="upload-icon">📑</span>
+                        <p style={{ fontWeight: 600, color: '#fff' }}>{contractFile.name}</p>
+                        <p style={{ color: '#666', fontSize: '0.9rem' }}>
+                          {(contractFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="upload-icon">📋</span>
+                        <p style={{ color: '#a0a0a0' }}>Click to upload new contract PDF</p>
+                        <p style={{ color: '#666', fontSize: '0.9rem' }}>Supports PDF and Word documents</p>
+                      </>
+                    )}
+                  </div>
+
+                  <input
+                    ref={contractFileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleContractFileSelect}
+                    style={{ display: 'none' }}
+                  />
+
+                  {contractFile && !extractedRatesFile && (
+                    <div className="actions-row">
+                      <button 
+                        className="btn-blue"
+                        onClick={handleExtractRatesFromContract}
+                        disabled={isExtractingRates}
+                        style={{ padding: '1rem 2rem' }}
+                      >
+                        {isExtractingRates ? (
+                          <>
+                            <span className="spinner"></span> Extracting Rates...
+                          </>
+                        ) : (
+                          '🤖 Extract Rates with AI'
+                        )}
+                      </button>
+                      <button 
+                        className="btn-secondary"
+                        onClick={() => {
+                          setContractFile(null);
+                          if (contractFileInputRef.current) contractFileInputRef.current.value = '';
+                        }}
+                      >
+                        ✕ Clear
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Show extracted rates result with prominent download button */}
+                  {extractedRatesFile && (
+                    <div style={{ 
+                      background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05))', 
+                      border: '2px solid rgba(34, 197, 94, 0.5)', 
+                      borderRadius: '16px', 
+                      padding: '1.5rem', 
+                      marginTop: '1.5rem' 
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                        <span style={{ fontSize: '2.5rem' }}>✅</span>
+                        <div>
+                          <p style={{ color: '#22c55e', fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.25rem' }}>
+                            Rates Extracted Successfully!
+                          </p>
+                          <p style={{ color: '#a0a0a0', fontSize: '0.95rem' }}>
+                            {extractedRatesCount} new rates extracted from the contract (without previous rates)
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {newCategoriesFound.length > 0 && (
+                        <div style={{ 
+                          background: 'rgba(251, 191, 36, 0.1)', 
+                          border: '1px solid rgba(251, 191, 36, 0.3)', 
+                          borderRadius: '8px', 
+                          padding: '0.75rem',
+                          marginBottom: '1rem'
+                        }}>
+                          <p style={{ color: '#fbbf24', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                            ⚠️ New room categories found in contract (not in database):
+                          </p>
+                          <ul style={{ color: '#a0a0a0', fontSize: '0.85rem', marginLeft: '1.25rem' }}>
+                            {newCategoriesFound.map((cat, idx) => (
+                              <li key={idx}>{cat.room_category_name}</li>
+                            ))}
+                          </ul>
+                          <p style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                            You may need to add these categories before uploading rates.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Prominent Download Button */}
+                      <button 
+                        className="btn-success"
+                        onClick={handleDownloadExtractedRates}
+                        style={{ 
+                          padding: '1rem 2rem', 
+                          fontSize: '1.1rem',
+                          width: '100%',
+                          marginBottom: '1rem',
+                          background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                          boxShadow: '0 4px 15px rgba(34, 197, 94, 0.3)'
+                        }}
+                      >
+                        ⬇️ Download New Rates Excel
+                      </button>
+
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <button 
+                          className="btn-blue"
+                          onClick={handleUseExtractedRates}
+                          style={{ flex: 1, minWidth: '200px' }}
+                        >
+                          ✓ Use These Rates for Upload (Step 2)
+                        </button>
+                        <button 
+                          className="btn-secondary"
+                          onClick={() => {
+                            setExtractedRatesFile(null);
+                            setExtractedRatesCount(0);
+                            setNewCategoriesFound([]);
+                          }}
+                          style={{ padding: '0.9rem 1.5rem' }}
+                        >
+                          ✕ Clear & Try Again
+                        </button>
+                      </div>
+                      <p style={{ color: '#666', fontSize: '0.8rem', marginTop: '1rem', textAlign: 'center' }}>
+                        Download to review/edit the rates, or click "Use These Rates" to load them directly into Step 2.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* Step 2: Upload Modified Rates */}
           {ratesData.length > 0 && (
