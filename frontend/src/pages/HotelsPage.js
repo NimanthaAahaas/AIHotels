@@ -178,7 +178,7 @@ function HotelsPage() {
       
       const response = await axios.post(`${API_BASE}/extract-rates-from-contract`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 180000, // 3 minutes timeout
+        timeout: 300000, // 5 minutes timeout
       });
 
       console.log('Response received:', response.data);
