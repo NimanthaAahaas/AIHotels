@@ -152,7 +152,27 @@ function HotelsUpload() {
       }
     } catch (err) {
       console.error('Error processing document:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to process document');
+      console.error('Error code:', err.code);
+      console.error('Error response:', err.response);
+      
+      // Enhanced error handling for different error types
+      let errorMessage = 'Failed to process document';
+      
+      if (err.message === 'Network Error' && !err.response) {
+        errorMessage = 'Network Error: Unable to reach server. This may be a CORS issue. Please ensure the backend server is running and configured correctly.';
+      } else if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Request timed out. The AI processing is taking longer than expected. Please try again or use a smaller document.';
+      } else if (err.response?.status === 504) {
+        errorMessage = 'Gateway Timeout (504): The server took too long to respond. Please try again later.';
+      } else if (err.response?.status === 500) {
+        errorMessage = `Server Error: ${err.response?.data?.message || 'Internal server error occurred'}`;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -192,14 +212,34 @@ function HotelsUpload() {
 
     } catch (err) {
       console.error(`Error uploading ${tableName}:`, err);
+      console.error('Error code:', err.code);
+      console.error('Error response:', err.response);
+      
+      // Enhanced error handling for different error types
+      let errorMessage = `Failed to upload ${tableName}`;
+      
+      if (err.message === 'Network Error' && !err.response) {
+        errorMessage = 'Network Error: Unable to reach server. This may be a CORS issue. Please ensure the backend server is running and configured correctly.';
+      } else if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Request timed out. The upload is taking longer than expected. Please try again.';
+      } else if (err.response?.status === 504) {
+        errorMessage = 'Gateway Timeout (504): The server took too long to respond. Please try again later.';
+      } else if (err.response?.status === 500) {
+        errorMessage = `Server Error: ${err.response?.data?.message || 'Internal server error occurred'}`;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
       setTableUploadStatus(prev => ({
         ...prev,
         [tableName]: {
           success: false,
-          message: err.response?.data?.message || err.message
+          message: errorMessage
         }
       }));
-      setError(err.response?.data?.message || err.message);
+      setError(errorMessage);
     } finally {
       setUploadingTable(null);
     }
@@ -222,7 +262,9 @@ function HotelsUpload() {
     
     try {
       if (currentStep === 1) {
-        const hotelIdResponse = await axios.get(GET_LAST_HOTEL_ID_URL);
+        const hotelIdResponse = await axios.get(GET_LAST_HOTEL_ID_URL, {
+          timeout: 60000, // 1 minute timeout
+        });
         if (!hotelIdResponse.data.success) {
           throw new Error('Could not retrieve hotel ID from database');
         }
@@ -233,6 +275,8 @@ function HotelsUpload() {
         const step2Response = await axios.post(GENERATE_STEP2_URL, {
           sessionId: sessionId,
           hotelId: newHotelId
+        }, {
+          timeout: 300000, // 5 minutes timeout
         });
 
         if (step2Response.data.success) {
@@ -250,6 +294,8 @@ function HotelsUpload() {
         const step3Response = await axios.post(GENERATE_STEP3_URL, {
           sessionId: sessionId,
           hotelId: hotelId
+        }, {
+          timeout: 300000, // 5 minutes timeout
         });
 
         if (step3Response.data.success) {
@@ -267,6 +313,8 @@ function HotelsUpload() {
         const step4Response = await axios.post(GENERATE_STEP4_URL, {
           sessionId: sessionId,
           hotelId: hotelId
+        }, {
+          timeout: 300000, // 5 minutes timeout
         });
 
         if (step4Response.data.success) {
@@ -287,7 +335,27 @@ function HotelsUpload() {
       }
     } catch (err) {
       console.error('Error proceeding to next step:', err);
-      setError(err.message || 'Failed to proceed to next step');
+      console.error('Error code:', err.code);
+      console.error('Error response:', err.response);
+      
+      // Enhanced error handling for different error types
+      let errorMessage = 'Failed to proceed to next step';
+      
+      if (err.message === 'Network Error' && !err.response) {
+        errorMessage = 'Network Error: Unable to reach server. This may be a CORS issue. Please ensure the backend server is running and configured correctly.';
+      } else if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Request timed out. The server is taking longer than expected. Please try again.';
+      } else if (err.response?.status === 504) {
+        errorMessage = 'Gateway Timeout (504): The server took too long to respond. Please try again later.';
+      } else if (err.response?.status === 500) {
+        errorMessage = `Server Error: ${err.response?.data?.message || 'Internal server error occurred'}`;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
