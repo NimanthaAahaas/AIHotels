@@ -59,10 +59,45 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Middleware
-app.use(cors());
+// CORS configuration - allow multiple origins
+const allowedOrigins = [
+  'https://makeai.aahaas.com',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for now, change to false to restrict
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Disposition'],
+  credentials: true,
+  maxAge: 86400 // 24 hours preflight cache
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
+// Increase payload limits
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+// Set server timeout to 5 minutes for long-running operations (AI processing)
+app.use((req, res, next) => {
+  // Set timeout to 5 minutes (300000ms)
+  req.setTimeout(300000);
+  res.setTimeout(300000);
+  next();
+});
 
 // Serve lifestyle app static files
 const lifestyleDir = path.join(__dirname, 'lifestyle');
@@ -3847,8 +3882,18 @@ Return ONLY valid JSON. Extract EVERY rate combination from the document.`;
   }
 });
 
-app.listen(PORT, () => {
+// Create HTTP server with extended timeout for long-running operations
+const http = require('http');
+const server = http.createServer(app);
+
+// Set server timeouts to 5 minutes (300000ms) for AI processing
+server.timeout = 300000;
+server.keepAliveTimeout = 300000;
+server.headersTimeout = 300000;
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Upload directory: ${uploadDir}`);
   console.log(`Output directory: ${outputDir}`);
+  console.log(`Server timeout: ${server.timeout}ms`);
 });
