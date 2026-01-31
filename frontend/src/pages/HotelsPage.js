@@ -1349,7 +1349,7 @@ function HotelsPage() {
                   </div>
                 )}
 
-                <div className="actions-row">
+                <div className="actions-row" style={{ display: 'flex', alignItems: 'flex-start', gap: '1.5rem', flexWrap: 'wrap' }}>
                   <button 
                     className="btn-secondary"
                     onClick={handleDownloadRates}
@@ -1357,6 +1357,67 @@ function HotelsPage() {
                   >
                     ⬇️ Download Rates Excel
                   </button>
+                  
+                  {/* Distinct Room Categories and Room Types Display */}
+                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ 
+                      background: 'rgba(59, 130, 246, 0.1)', 
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '8px', 
+                      padding: '0.75rem 1rem',
+                      minWidth: '180px'
+                    }}>
+                      <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.5rem', fontWeight: 600 }}>
+                        📁 Room Categories ({[...new Set(ratesData.map(r => r.room_category_id))].length})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {[...new Set(ratesData.map(r => r.room_category_id))].sort().map((category, idx) => (
+                          <span 
+                            key={idx} 
+                            style={{ 
+                              background: 'rgba(59, 130, 246, 0.2)', 
+                              color: '#60a5fa',
+                              padding: '0.25rem 0.6rem', 
+                              borderRadius: '4px', 
+                              fontSize: '0.8rem',
+                              fontWeight: 500
+                            }}
+                          >
+                            {category}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div style={{ 
+                      background: 'rgba(16, 185, 129, 0.1)', 
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '8px', 
+                      padding: '0.75rem 1rem',
+                      minWidth: '180px'
+                    }}>
+                      <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.5rem', fontWeight: 600 }}>
+                        🛏️ Room Types ({[...new Set(ratesData.map(r => r.room_type_id))].length})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {[...new Set(ratesData.map(r => r.room_type_id))].sort().map((type, idx) => (
+                          <span 
+                            key={idx} 
+                            style={{ 
+                              background: 'rgba(16, 185, 129, 0.2)', 
+                              color: '#34d399',
+                              padding: '0.25rem 0.6rem', 
+                              borderRadius: '4px', 
+                              fontSize: '0.8rem',
+                              fontWeight: 500
+                            }}
+                          >
+                            {type}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </>
             )}

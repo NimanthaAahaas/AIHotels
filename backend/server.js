@@ -3707,6 +3707,12 @@ You should create 4 rate entries:
   {"room_category_id": "Deluxe Room", "room_type_id": "Family", "adult_rate": 105, "meal_plan": "BB", "booking_start_date": "2026-05-01", "booking_end_date": "2026-07-15", ...}
 ]
 
+5. AGE RANGES: Extract the age ranges from the contract:
+   - child_foc_age: Age range for free children (e.g., "0-5" or "0-6")
+   - child_with_no_bed_age: Age range for children without bed (e.g., "6-10" or "6-11.99")
+   - child_with_bed_age: Age range for children with bed (e.g., "6-10" or "6-11.99")
+   - adult_age: MUST be a range starting from the age after child_with_bed_age ends, up to 100 (e.g., if child_with_bed_age is "6-10", then adult_age should be "11-100")
+
 Return a JSON object with this structure:
 {
   "hotel_room_rates": [
@@ -3716,10 +3722,10 @@ Return a JSON object with this structure:
       "adult_rate": number (the SPECIFIC rate for this room type),
       "child_with_bed_rate": number (if specified, otherwise 0),
       "child_without_bed_rate": number (if specified, otherwise 0),
-      "child_foc_age": "0-6",
-      "child_with_no_bed_age": "6-11.99",
-      "child_with_bed_age": "6-11.99",
-      "adult_age": "12+",
+      "child_foc_age": "0-6" (extract from contract),
+      "child_with_no_bed_age": "6-11.99" (extract from contract),
+      "child_with_bed_age": "6-11.99" (extract from contract),
+      "adult_age": "12-100" (MUST be a range, starting from age after child_with_bed_age ends, e.g., if child_with_bed_age ends at 11.99, adult_age is "12-100"),
       "book_by_days": 0,
       "meal_plan": "BB/HB/FB/AI/RO",
       "room_category_id": "EXACT room category name",
@@ -3816,16 +3822,30 @@ Return ONLY valid JSON. Extract EVERY rate combination from the document.`;
         card_id: cardIdMap.get(cardKey),
         created_at: now,
         updated_at: now,
-        // Ensure numeric values
-        adult_rate: parseFloat(rate.adult_rate) || 0,
-        child_with_bed_rate: parseFloat(rate.child_with_bed_rate) || 0,
-        child_without_bed_rate: parseFloat(rate.child_without_bed_rate) || 0,
+        // Rate columns should be empty (for user to fill in selling rates)
+        adult_rate: '',
+        child_with_bed_rate: '',
+        child_without_bed_rate: '',
+        // Actual rate columns store the extracted contract rates
+        actual_adult_rate: parseFloat(rate.adult_rate) || 0,
+        actual_child_with_bed_rate: parseFloat(rate.child_with_bed_rate) || 0,
+        actual_child_without_bed_rate: parseFloat(rate.child_without_bed_rate) || 0,
         // Default values if not provided
         market_nationality: rate.market_nationality || 'All',
         child_foc_age: rate.child_foc_age || '0-6',
         child_with_no_bed_age: rate.child_with_no_bed_age || '6-11.99',
         child_with_bed_age: rate.child_with_bed_age || '6-11.99',
-        adult_age: rate.adult_age || '12+',
+        // Calculate adult_age based on child_with_bed_age if not provided or if it's in old format
+        adult_age: (() => {
+          if (rate.adult_age && rate.adult_age.includes('-') && rate.adult_age.includes('100')) {
+            return rate.adult_age; // Already in correct format
+          }
+          // Calculate from child_with_bed_age
+          const childAge = rate.child_with_bed_age || '6-11.99';
+          const endAge = childAge.split('-')[1];
+          const adultStart = endAge ? Math.ceil(parseFloat(endAge)) : 12;
+          return `${adultStart}-100`;
+        })(),
         book_by_days: parseInt(rate.book_by_days) || 0,
         payment_type: rate.payment_type || 'Advance',
         blackout_dates: rate.blackout_dates || '',

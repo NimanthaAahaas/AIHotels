@@ -6,6 +6,22 @@ import aahaasLogo from '../images/aahaas_monoMain.png';
 // Backend API URLs
 // Use 'process-direct' for local OpenAI processing with multi-step workflow
 // Use 'proxy-n8n' for n8n workflow (returns all files at once, no sessionId)
+
+// Production URLs (uncomment for production)
+// const API_BASE = 'https://makeaibackend.aahaas.com/api';
+
+// Local development URLs
+// const API_BASE = 'http://localhost:3003/api';
+
+// const API_URL = `${API_BASE}/process-direct`;
+// const DB_UPLOAD_SINGLE_URL = `${API_BASE}/upload-single-table`;
+// const GENERATE_STEP2_URL = `${API_BASE}/generate-step2-sheets`;
+// const GENERATE_STEP3_URL = `${API_BASE}/generate-step3-sheets`;
+// const GENERATE_STEP4_URL = `${API_BASE}/generate-step4-sheets`;
+// const GET_LAST_HOTEL_ID_URL = `${API_BASE}/get-last-hotel-id`;
+
+
+
 const API_URL = 'https://makeaibackend.aahaas.com/api/process-direct';
 const DB_UPLOAD_SINGLE_URL = 'https://makeaibackend.aahaas.com/api/upload-single-table';
 const GENERATE_STEP2_URL = 'https://makeaibackend.aahaas.com/api/generate-step2-sheets';
