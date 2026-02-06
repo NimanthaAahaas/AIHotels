@@ -505,7 +505,7 @@ body::after {
 }
 
 .logo-container img {
-  height: 80px;
+  height: 100px;
   width: auto;
   filter: drop-shadow(0 4px 12px rgba(255, 107, 44, 0.3));
   transition: var(--transition-normal);

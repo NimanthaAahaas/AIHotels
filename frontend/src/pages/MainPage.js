@@ -184,7 +184,7 @@ function MainPage() {
             }}></div>
           </div>
           <div style={{ padding: '1.25rem', textAlign: 'left' }}>
-            <span className="button-text" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Hotels Management</span>
+            <span className="button-text" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Hotel Amendments</span>
             <span className="button-description" style={{ 
               display: 'block', 
               marginTop: '0.5rem',
