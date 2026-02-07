@@ -5,7 +5,7 @@ import aahaasLogo from '../images/aahaas_monoMain.png';
 
 // Backend API URLs
 
-const API_BASE = 'https://makeaibackend.aahaas.com/api';
+const API_BASE = 'https://makeai-api.aahaas.com/api';
 
 // Use localhost for local development with the new extract-rates-from-contract endpoint
 // const API_BASE = 'http://localhost:3003/api';

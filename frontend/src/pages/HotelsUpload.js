@@ -22,12 +22,12 @@ import aahaasLogo from '../images/aahaas_monoMain.png';
 
 
 
-const API_URL = 'https://makeaibackend.aahaas.com/api/process-direct';
-const DB_UPLOAD_SINGLE_URL = 'https://makeaibackend.aahaas.com/api/upload-single-table';
-const GENERATE_STEP2_URL = 'https://makeaibackend.aahaas.com/api/generate-step2-sheets';
-const GENERATE_STEP3_URL = 'https://makeaibackend.aahaas.com/api/generate-step3-sheets';
-const GENERATE_STEP4_URL = 'https://makeaibackend.aahaas.com/api/generate-step4-sheets';
-const GET_LAST_HOTEL_ID_URL = 'https://makeaibackend.aahaas.com/api/get-last-hotel-id';
+const API_URL = 'https://makeai-api.aahaas.com/api/process-direct';
+const DB_UPLOAD_SINGLE_URL = 'https://makeai-api.aahaas.com/api/upload-single-table';
+const GENERATE_STEP2_URL = 'https://makeai-api.aahaas.com/api/generate-step2-sheets';
+const GENERATE_STEP3_URL = 'https://makeai-api.aahaas.com/api/generate-step3-sheets';
+const GENERATE_STEP4_URL = 'https://makeai-api.aahaas.com/api/generate-step4-sheets';
+const GET_LAST_HOTEL_ID_URL = 'https://makeai-api.aahaas.com/api/get-last-hotel-id';
 
 // Steps configuration
 const STEPS = {
