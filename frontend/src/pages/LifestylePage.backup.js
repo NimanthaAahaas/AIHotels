@@ -6,7 +6,7 @@ function LifestylePage() {
   const navigate = useNavigate();
   // Add timestamp to force fresh load of iframe
   const [iframeKey] = useState(() => Date.now());
-  const lifestyleAppUrl = `https://makeaibackend.aahaas.com/lifestyle-app/?t=${iframeKey}`;
+  const lifestyleAppUrl = `https://makeai-api.aahaas.com/lifestyle-app/?t=${iframeKey}`;
 
   // Upload state
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -116,7 +116,7 @@ function LifestylePage() {
         formData.append(key, file);
       });
 
-      const response = await fetch('https://makeaibackend.aahaas.com/api/upload-lifestyle-to-database', {
+      const response = await fetch('https://makeai-api.aahaas.com/api/upload-lifestyle-to-database', {
         method: 'POST',
         body: formData,
       });

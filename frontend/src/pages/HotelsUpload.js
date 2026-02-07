@@ -22,6 +22,9 @@ import aahaasLogo from '../images/aahaas_monoMain.png';
 
 
 
+// Production URLs (uncomment for production)
+// const API_BASE = 'https://makeai-api.aahaas.com/api';
+
 const API_URL = 'https://makeai-api.aahaas.com/api/process-direct';
 const DB_UPLOAD_SINGLE_URL = 'https://makeai-api.aahaas.com/api/upload-single-table';
 const GENERATE_STEP2_URL = 'https://makeai-api.aahaas.com/api/generate-step2-sheets';

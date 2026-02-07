@@ -21,14 +21,16 @@ const PORT = process.env.PORT || 3003;
 const N8N_WEBHOOK_URL = 'https://aahaas-ai.app.n8n.cloud/webhook/process-hotel-contract';
 
 // Database configuration - handle password with special characters
-const dbPassword = (process.env.DB_PASSWORD || '&l+>XV7=Q@iF&B9').replace(/^["']|["']$/g, ''); // Remove quotes if present
+// const dbPassword = (process.env.DB_PASSWORD || '&l+>XV7=Q@iF&B9').replace(/^["']|["']$/g, ''); // Remove quotes if present
+
+const dbPassword = (process.env.DB_PASSWORD || 'jkhgfy748*&Hjdlid').replace(/^["']|["']$/g, '');
 
 const DB_CONFIG = {
-  host: process.env.DB_HOST || '35.197.143.222',
+  host: process.env.DB_HOST || 'aahaas-prod-database-4.crgimm6mohf1.ap-southeast-1.rds.amazonaws',
   port: parseInt(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
+  user: process.env.DB_USER || 'appletech',
   password: dbPassword,
-  database: process.env.DB_NAME || 'production_test5',
+  database: process.env.DB_NAME || 'production_live1',
   connectTimeout: 30000,
   ssl: false
 };
